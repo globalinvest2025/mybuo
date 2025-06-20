@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import logo from './assets/myvuer-logo1.png'; 
+import logo from './assets/mybuo-logo1.png'; 
 
 export default function Layout() {
   const location = useLocation();
@@ -15,9 +15,9 @@ export default function Layout() {
           
           {/* --- AQUÍ ESTÁ LA MAGIA: Logo y Texto Juntos --- */}
           <Link to="/" className="flex items-center gap-3"> {/* 1. Contenedor flexible */}
-            <img src={logo} alt="MyVuer Logo" className="h-9 w-auto" /> {/* 2. Tu logo */}
+            <img src={logo} alt="MyBuoLogo" className="h-9 w-auto" /> {/* 2. Tu logo */}
             <span className="text-3xl font-bold text-gray-900">
-              My<span className="text-purple-600">Vuer</span>
+              My<span className="text-purple-600">Buo</span>
             </span> {/* 3. Tu texto */}
           </Link>
 
@@ -41,7 +41,7 @@ export default function Layout() {
 
       <footer className="bg-gray-800 text-gray-300 py-8">
         <div className="max-w-7xl mx-auto text-center px-6">
-            <p>&copy; {new Date().getFullYear()} MyVuer.com. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} MyBuo.com. All rights reserved.</p>
         </div>
       </footer>
       
