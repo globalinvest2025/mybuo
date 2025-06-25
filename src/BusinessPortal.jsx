@@ -1,4 +1,4 @@
-// BusinessPortal.jsx - VERSIÓN FINAL, COMPLETA Y DEFINITIVA
+// BusinessPortal.jsx - VERSIÓN FINAL, COMPLETA Y VERIFICADA
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +35,7 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in-0">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col relative">
+                {/* La sección de la imagen/tour ya no tiene el botón de cerrar */}
                 <div className="w-full h-[28rem] bg-gray-200 rounded-t-2xl overflow-hidden flex-shrink-0">
                     {isTourUrlValid ? (
                         <iframe src={business.tour_3d_url} title={`3D tour of ${business.name}`} className="w-full h-full border-0" allow="fullscreen; vr" allowFullScreen />
@@ -42,12 +43,11 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
                         <img src={(business.images && business.images[0]) || 'https://placehold.co/800x600'} alt={business.name} className="w-full h-full object-cover" />
                     )}
                 </div>
+                {/* El botón de cerrar se mueve aquí, al área de contenido */}
                 <div className="p-8 overflow-y-auto relative">
-                    {/* --- BOTÓN CERRAR CORREGIDO --- */}
                     <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 z-10 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
-
                     <h2 className="text-3xl font-bold mb-2 pr-12">{business.name}</h2>
                     <div className="flex items-center gap-2 mb-4"><div className="flex">{renderStars(business.rating)}</div><span className="text-gray-600">({business.reviewsCount || 0} reviews)</span></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-gray-700 mb-6">
@@ -82,7 +82,7 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
 export default function BusinessPortal() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedBusiness, setSelectedBusiness] = useState(null);
-    const [activeTab, setActiveTab] = useState('browse');
+    const [activeTab, setActiveTab] = useState('featured');
     const [category, setCategory] = useState("");
     const [viewMode, setViewMode] = useState("grid");
     const [sortBy, setSortBy] = useState("rating");
@@ -112,7 +112,7 @@ export default function BusinessPortal() {
 
     const allBusinesses = useMemo(() => businesses || [], [businesses]);
     const featuredBusinesses = useMemo(() => allBusinesses.filter(b => b.featured), [allBusinesses]);
-    const newBusinesses = useMemo(() => allBusinesses.filter(b => b.isNew), [allBusinesses]);
+    const newBusinesses = useMemo(() => [...allBusinesses].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6), [allBusinesses]);
     
     const filteredAndSortedData = useMemo(() => {
         let items = dataByCategory[category] || [];

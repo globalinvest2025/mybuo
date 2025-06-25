@@ -1,11 +1,10 @@
-// src/BusinessLandingPage.jsx (Versión con la ruta de importación corregida)
+// src/BusinessLandingPage.jsx (Versión Final, Completa y con Ruta Corregida)
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle, MapPin } from 'lucide-react';
 
-// --- RUTA CORREGIDA Y DEFINITIVA ---
-// Busca la carpeta 'lib' dentro de 'src'
+// --- RUTA DE IMPORTACIÓN CORREGIDA Y DEFINITIVA ---
 import { supabase } from './lib/supabaseClient.js'; 
 
 export default function BusinessLandingPage() {
@@ -13,6 +12,8 @@ export default function BusinessLandingPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // El listener central en Layout.jsx se encarga ahora de la redirección.
+    // Mantenemos este componente más simple.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
         navigate('/dashboard');
@@ -56,8 +57,9 @@ export default function BusinessLandingPage() {
           <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">For Free.</span>
         </h1>
         <p className="max-w-3xl mx-auto mt-6 text-lg text-gray-600">
-          Join MyBuo's fastest-growing business directory. Create a professional profile in minutes and connect with thousands of local customers looking for you.
+          Join MyBuo's fastest-growing business directory. Create a professional profile in minutes and connect with thousands of local customers looking for you. No subscriptions, no hidden fees.
         </p>
+        
         <button
           onClick={handleLoginWithGoogle}
           disabled={loading}
@@ -72,7 +74,7 @@ export default function BusinessLandingPage() {
           Get Started with Google
         </button>
       </section>
-      
+
       <section className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="text-center">

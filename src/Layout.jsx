@@ -1,9 +1,13 @@
-// src/Layout.jsx (Versión con logo y eslogan actualizados)
+// src/Layout.jsx (Versión con TODAS las rutas corregidas)
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+
+// --- RUTAS CORREGIDAS ---
 import { supabase } from './lib/supabaseClient.js';
 import logo from './assets/mybuo-logo.png'; 
+// -------------------------
+
 import { LogOut } from 'lucide-react';
 
 export default function Layout() {
@@ -16,16 +20,21 @@ export default function Layout() {
       setSession(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'SIGNED_IN' && location.pathname !== '/dashboard') {
+        navigate('/dashboard');
+      }
+      if (event === 'SIGNED_OUT') {
+        navigate('/');
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate, location.pathname]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate('/');
   };
 
   return (
@@ -34,26 +43,20 @@ export default function Layout() {
       <header className="bg-white/80 backdrop-blur-sm sticky top-0 z-30 border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
           
-          {/* --- SECCIÓN DEL LOGO Y ESLOGAN ACTUALIZADA --- */}
           <div className="flex items-center gap-4">
             <Link to="/" className="flex items-center gap-3">
-              <img src={logo} alt="MyBuo Logo" className="h-9 w-auto" /> {/* Logo un poco más grande para balancear */}
+              <img src={logo} alt="MyBuo Logo" className="h-9 w-auto" />
               <span className="text-2xl font-bold text-gray-900">
                 My<span className="text-purple-600">Buo</span>
-                {/* 1. Añadimos el .com en negro */}
                 <span className="text-gray-900">.com</span>
               </span>
             </Link>
-
-            {/* 2. Div para el separador y el eslogan (se oculta en móviles) */}
             <div className="hidden md:flex items-center gap-4">
-                <div className="w-px h-6 bg-gray-300"></div> {/* Línea vertical separadora */}
+                <div className="w-px h-6 bg-gray-300"></div>
                 <p className="text-sm text-gray-500 italic">Your Guide to 3D Business Tours</p>
             </div>
           </div>
 
-
-          {/* La navegación no cambia */}
           <nav className="flex items-center gap-6">
             {session ? (
               <div className="flex items-center gap-4">
