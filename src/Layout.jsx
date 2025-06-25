@@ -1,4 +1,4 @@
-// src/Layout.jsx (Versión Final y Robusta)
+// src/Layout.jsx (Versión Corregida con Manejo Completo de Autenticación)
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
@@ -8,38 +8,110 @@ import { LogOut } from 'lucide-react';
 
 export default function Layout() {
   const [session, setSession] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // 1. Obtenemos la sesión la primera vez que carga
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+    let isMounted = true;
 
-    // 2. Este listener es el "guardián" de la sesión.
-    // Reacciona a cualquier cambio de autenticación (login, logout).
+    const initializeAuth = async () => {
+      try {
+        // 1. Verificar si hay tokens en la URL (callback de Google)
+        const hash = window.location.hash;
+        
+        if (hash.includes('access_token')) {
+          console.log('🔍 Tokens detectados en URL, procesando...');
+          
+          // Extraer tokens de la URL
+          const hashParams = new URLSearchParams(hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+          
+          if (accessToken && refreshToken) {
+            console.log('📝 Estableciendo sesión con tokens...');
+            
+            // Establecer la sesión en Supabase
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            
+            if (data.session && !error && isMounted) {
+              console.log('✅ Sesión establecida exitosamente:', data.session.user.email);
+              setSession(data.session);
+              
+              // Limpiar la URL
+              window.history.replaceState({}, document.title, window.location.pathname);
+              
+              // Redirigir al dashboard
+              navigate('/dashboard');
+            } else if (error) {
+              console.error('❌ Error al establecer sesión:', error);
+            }
+          }
+        } else {
+          // 2. Si no hay tokens en URL, verificar sesión existente
+          const { data: { session } } = await supabase.auth.getSession();
+          if (isMounted) {
+            setSession(session);
+            console.log(session ? '✅ Sesión existente encontrada' : '📭 No hay sesión activa');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error inicializando autenticación:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    // 3. Listener para cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      
+      console.log('🔄 Cambio de autenticación:', event);
       setSession(session);
 
-      // Si el evento es un inicio de sesión, te llevamos al dashboard
-      if (event === "SIGNED_IN") {
-        navigate('/dashboard');
-      }
-      
-      // Si el evento es un cierre de sesión, te llevamos a la página de inicio
-      if (event === "SIGNED_OUT") {
-        navigate('/');
+      // Solo redirigir si no estamos procesando tokens de URL
+      if (!window.location.hash.includes('access_token')) {
+        if (event === "SIGNED_IN" && session) {
+          console.log('📍 Redirigiendo a dashboard...');
+          navigate('/dashboard');
+        } else if (event === "SIGNED_OUT") {
+          console.log('📍 Redirigiendo a inicio...');
+          navigate('/');
+        }
       }
     });
 
-    // Limpiamos la suscripción para evitar problemas de memoria
-    return () => subscription.unsubscribe();
+    // Inicializar
+    initializeAuth();
+
+    // Cleanup
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleLogout = async () => {
+    console.log('🚪 Cerrando sesión...');
     await supabase.auth.signOut();
   };
+
+  // Mostrar loading durante la inicialización
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Initializing...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 text-gray-800 font-sans">
@@ -61,7 +133,9 @@ export default function Layout() {
           <nav className="flex items-center gap-6">
             {session ? (
               <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600 hidden sm:inline">{session.user.email}</span>
+                <span className="text-sm text-gray-600 hidden sm:inline">
+                  {session.user.user_metadata?.full_name || session.user.email}
+                </span>
                 <button 
                   onClick={handleLogout}
                   className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition-colors text-sm"
