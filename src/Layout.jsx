@@ -1,13 +1,9 @@
-// src/Layout.jsx (Versión con TODAS las rutas corregidas)
+// src/Layout.jsx (Versión Final y Robusta)
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-
-// --- RUTAS CORREGIDAS ---
-import { supabase } from './lib/supabaseClient.js';
+import { supabase } from './lib/supabaseClient';
 import logo from './assets/mybuo-logo.png'; 
-// -------------------------
-
 import { LogOut } from 'lucide-react';
 
 export default function Layout() {
@@ -16,22 +12,30 @@ export default function Layout() {
   const location = useLocation();
 
   useEffect(() => {
+    // 1. Obtenemos la sesión la primera vez que carga
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
+    // 2. Este listener es el "guardián" de la sesión.
+    // Reacciona a cualquier cambio de autenticación (login, logout).
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (event === 'SIGNED_IN' && location.pathname !== '/dashboard') {
+
+      // Si el evento es un inicio de sesión, te llevamos al dashboard
+      if (event === "SIGNED_IN") {
         navigate('/dashboard');
       }
-      if (event === 'SIGNED_OUT') {
+      
+      // Si el evento es un cierre de sesión, te llevamos a la página de inicio
+      if (event === "SIGNED_OUT") {
         navigate('/');
       }
     });
 
+    // Limpiamos la suscripción para evitar problemas de memoria
     return () => subscription.unsubscribe();
-  }, [navigate, location.pathname]);
+  }, [navigate]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -39,10 +43,8 @@ export default function Layout() {
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 text-gray-800 font-sans">
-      
       <header className="bg-white/80 backdrop-blur-sm sticky top-0 z-30 border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
-          
           <div className="flex items-center gap-4">
             <Link to="/" className="flex items-center gap-3">
               <img src={logo} alt="MyBuo Logo" className="h-9 w-auto" />
@@ -56,7 +58,6 @@ export default function Layout() {
                 <p className="text-sm text-gray-500 italic">Your Guide to 3D Business Tours</p>
             </div>
           </div>
-
           <nav className="flex items-center gap-6">
             {session ? (
               <div className="flex items-center gap-4">
@@ -82,20 +83,16 @@ export default function Layout() {
               </>
             )}
           </nav>
-
         </div>
       </header>
-
       <main className="flex-grow">
         <Outlet />
       </main>
-
       <footer className="bg-gray-800 text-gray-300 py-8">
         <div className="max-w-7xl mx-auto text-center px-6">
             <p>&copy; {new Date().getFullYear()} MyBuo.com. All rights reserved.</p>
         </div>
       </footer>
-      
     </div>
   );
 }
