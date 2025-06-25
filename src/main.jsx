@@ -1,23 +1,24 @@
-// src/main.jsx (Versión Definitiva con la Ruta Correcta)
+// src/main.jsx (Versión Definitiva con Todas las Rutas)
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import './index.css';
 
-// --- RUTA CORREGIDA ---
-// Busca Layout.jsx en la misma carpeta (./) porque ambos están en src/
-import Layout from './Layout.jsx'; 
-// =========================
+// 1. Importamos TanStack Query para la gestión de datos
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+// 2. Importamos todos nuestros componentes de página y layout
+import Layout from './Layout.jsx';
 import BusinessPortal from './BusinessPortal.jsx';
-// La siguiente línea puede dar un error si no has creado la carpeta /pages.
-// La comentaré por ahora para asegurar que todo funcione.
-// import BusinessLandingPage from './pages/BusinessLandingPage.jsx'; 
-import BusinessLandingPage from './BusinessLandingPage.jsx'; // Suponiendo que este archivo también está en src/
+import BusinessLandingPage from './BusinessLandingPage.jsx';
+import DashboardPage from './DashboardPage.jsx';
+import EditBusinessPage from './EditBusinessPage.jsx';
 
+// 3. Creamos el cliente de Query
+const queryClient = new QueryClient();
 
-// Crea el "mapa" de tu sitio web
+// 4. Creamos el "mapa" del sitio con todas las rutas
 const router = createBrowserRouter([
   {
     path: "/",
@@ -28,16 +29,26 @@ const router = createBrowserRouter([
         element: <BusinessPortal />,
       },
       {
-        path: "inscribirse",
+        path: "register",
         element: <BusinessLandingPage />,
+      },
+      {
+        path: "dashboard",
+        element: <DashboardPage />,
+      },
+      {
+        path: "dashboard/edit/:businessId",
+        element: <EditBusinessPage />,
       },
     ],
   },
 ]);
 
-// Renderiza la aplicación usando el enrutador
+// 5. Renderizamos la aplicación, envolviéndola con el QueryClientProvider
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </React.StrictMode>,
 );
