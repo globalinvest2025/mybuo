@@ -1,24 +1,24 @@
-// src/pages/BusinessLandingPage.jsx (Versión Final con Manejo de Autenticación Profesional)
+// src/BusinessLandingPage.jsx (Versión con la ruta de importación corregida)
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle, MapPin } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient.js';
+
+// --- RUTA CORREGIDA Y DEFINITIVA ---
+// Busca la carpeta 'lib' dentro de 'src'
+import { supabase } from './lib/supabaseClient.js'; 
 
 export default function BusinessLandingPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Este listener es la clave. Reacciona a los eventos de login/logout.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        // Cuando Supabase confirma el inicio de sesión, redirigimos al dashboard.
         navigate('/dashboard');
       }
     });
 
-    // Limpiamos el listener cuando el componente se desmonta para evitar fugas de memoria.
     return () => {
       subscription.unsubscribe();
     };
@@ -28,20 +28,17 @@ export default function BusinessLandingPage() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      // No necesitamos 'redirectTo' aquí porque el listener onAuthStateChange se encargará de ello.
     });
-
     if (error) {
       console.error('Error logging in with Google:', error.message);
-      alert('Sorry, there was an error during the login process. Please try again.');
       setLoading(false);
+      alert('Sorry, there was an error during the login process. Please try again.');
     }
   };
 
-  // Si está cargando, mostramos un spinner.
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-purple-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Connecting to Google...</p>
@@ -61,7 +58,6 @@ export default function BusinessLandingPage() {
         <p className="max-w-3xl mx-auto mt-6 text-lg text-gray-600">
           Join MyBuo's fastest-growing business directory. Create a professional profile in minutes and connect with thousands of local customers looking for you.
         </p>
-        
         <button
           onClick={handleLoginWithGoogle}
           disabled={loading}
@@ -76,7 +72,7 @@ export default function BusinessLandingPage() {
           Get Started with Google
         </button>
       </section>
-
+      
       <section className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="text-center">
