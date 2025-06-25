@@ -1,28 +1,54 @@
-// src/BusinessLandingPage.jsx (Versión Final, Completa y Corregida)
+// src/pages/BusinessLandingPage.jsx (Versión Final con Manejo de Autenticación Profesional)
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle, MapPin } from 'lucide-react';
-
-// Ruta corregida que apunta a la carpeta 'lib' dentro de 'src'
-import { supabase } from './lib/supabaseClient.js'; 
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function BusinessLandingPage() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Este listener es la clave. Reacciona a los eventos de login/logout.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        // Cuando Supabase confirma el inicio de sesión, redirigimos al dashboard.
+        navigate('/dashboard');
+      }
+    });
+
+    // Limpiamos el listener cuando el componente se desmonta para evitar fugas de memoria.
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const handleLoginWithGoogle = async () => {
+    setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: window.location.origin + '/dashboard',
-      },
+      // No necesitamos 'redirectTo' aquí porque el listener onAuthStateChange se encargará de ello.
     });
 
     if (error) {
-      console.error('Error logging in with Google:', error);
+      console.error('Error logging in with Google:', error.message);
       alert('Sorry, there was an error during the login process. Please try again.');
+      setLoading(false);
     }
   };
+
+  // Si está cargando, mostramos un spinner.
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-purple-50 to-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Connecting to Google...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main>
@@ -33,12 +59,13 @@ export default function BusinessLandingPage() {
           <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">For Free.</span>
         </h1>
         <p className="max-w-3xl mx-auto mt-6 text-lg text-gray-600">
-          Join MyBuo's fastest-growing business directory. Create a professional profile in minutes and connect with thousands of local customers looking for you. No subscriptions, no hidden fees.
+          Join MyBuo's fastest-growing business directory. Create a professional profile in minutes and connect with thousands of local customers looking for you.
         </p>
         
         <button
           onClick={handleLoginWithGoogle}
-          className="mt-10 px-8 py-4 bg-white text-gray-700 text-lg font-semibold rounded-xl border border-gray-300 shadow-sm hover:shadow-lg hover:bg-gray-50 transition-all duration-300 flex items-center justify-center gap-3 mx-auto"
+          disabled={loading}
+          className="mt-10 px-8 py-4 bg-white text-gray-700 text-lg font-semibold rounded-xl border border-gray-300 shadow-sm hover:shadow-lg hover:bg-gray-50 transition-all duration-300 flex items-center justify-center gap-3 mx-auto disabled:opacity-50"
         >
           <svg aria-hidden="true" height="24" viewBox="0 0 24 24" width="24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -50,7 +77,6 @@ export default function BusinessLandingPage() {
         </button>
       </section>
 
-      {/* --- SECCIONES RESTAURADAS --- */}
       <section className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="text-center">
