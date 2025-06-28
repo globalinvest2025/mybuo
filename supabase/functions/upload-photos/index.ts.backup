@@ -1,0 +1,33 @@
+import { corsHeaders } from '../_shared/cors.ts'
+
+console.log(`Función upload-photos lista para servir peticiones!`)
+
+Deno.serve(async (req) => {
+  // Este console.log nos dirá si la petición está llegando
+  console.log(`Petición recibida con método: ${req.method}`)
+
+  // Manejo esencial para que el navegador funcione (CORS)
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Ignoramos todo lo que nos envíen y simplemente devolvemos un mensaje de éxito
+    const responseData = { 
+      message: "¡Hola Mundo! La función respondió correctamente." 
+    };
+
+    return new Response(JSON.stringify(responseData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200, // Código 200 OK
+    });
+
+  } catch (error) {
+    // En caso de un error inesperado, devolvemos un error 500
+    const errorData = { error: `Ha ocurrido un error inesperado: ${error.message}` };
+    return new Response(JSON.stringify(errorData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, // Código 500 Internal Server Error
+    });
+  }
+})

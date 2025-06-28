@@ -1,0 +1,54 @@
+services:
+  db:
+    image: public.ecr.aws/supabase/postgres:15.1.0.118
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "54322:5432"
+    volumes:
+      - ./supabase/volumes/db:/var/lib/postgresql/data
+
+  kong:
+    image: public.ecr.aws/supabase/kong:3.6.1.4
+    restart: always
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/var/lib/kong/kong.yml
+      - KONG_DNS_ORDER=LAST,A,CNAME
+    ports:
+      - "54321:8000"
+    volumes:
+      - ./supabase/volumes/api:/var/lib/kong
+    depends_on:
+      - db
+
+  gotrue:
+    image: public.ecr.aws/supabase/gotrue:v2.138.0
+    restart: always
+    environment:
+      - GOTRUE_API_HOST=0.0.0.0
+      - GOTRUE_API_PORT=9999
+      - GOTRUE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
+    depends_on:
+      - db
+
+  realtime:
+    image: public.ecr.aws/supabase/realtime:v2.26.1
+    restart: always
+    depends_on:
+      - db
+      - kong
+
+  storage:
+    image: public.ecr.aws/supabase/storage-api:latest
+    restart: always
+    environment:
+      - ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+    depends_on:
+      - db
+
+volumes:
+  db:
