@@ -4,27 +4,22 @@ import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
 import { PlusCircle, Building, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
 
-// --- Componente del Modal para Añadir Negocio (con subida de archivos) ---
+// --- List Business Modal Component ---
+// This modal is used for adding a new business. Photo upload section is removed.
 function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
     const [formData, setFormData] = useState({
-        name: '', category: 'restaurants', location: '', type: 'photos',
+        name: '', category: 'restaurants', location: '',
         description: '', phone: '', website: '', hours: '', tour_3d_url: ''
     });
-    const [files, setFiles] = useState([]);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
-    
-    const handleFileChange = (e) => {
-        if (e.target.files) {
-            setFiles(Array.from(e.target.files));
-        }
-    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onAddBusiness({ businessData: formData, files });
+        // Now, onAddBusiness only receives businessData, not files.
+        onAddBusiness({ businessData: formData });
     };
 
     return (
@@ -41,19 +36,9 @@ function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
                     <div><label className="block text-sm font-medium text-gray-700">Phone Number</label><input type="tel" name="phone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}|\+[0-9]{1,3}-[0-9]{3}-[0-9]{3}-[0-9]{4}" placeholder="123-456-7890" title="Phone format: 123-456-7890 or 1234567890" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
                     <div><label className="block text-sm font-medium text-gray-700">Website URL</label><input type="url" name="website" placeholder="https://example.com" pattern="https?://.+" title="Include http:// or https:// in the URL" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
                     <div><label className="block text-sm font-medium text-gray-700">3D Tour URL</label><input type="url" name="tour_3d_url" placeholder="https://my.matterport.com/..." pattern="https?://.+" title="Include http:// or https:// in the URL" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Business Images</label>
-                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                            <div className="space-y-1 text-center">
-                                <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                                <div className="flex text-sm text-gray-600"><label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none"><span>Upload files</span><input id="file-upload" name="file-upload" type="file" multiple accept="image/*" className="sr-only" onChange={handleFileChange} /></label><p className="pl-1">or drag and drop</p></div>
-                                <p className="text-xs text-gray-500">PNG, JPG up to 10MB</p>
-                            </div>
-                        </div>
-                        {files.length > 0 && <div className="mt-2 text-sm text-gray-500">{files.map(file => <p key={file.name}>{file.name}</p>)}</div>}
-                    </div>
+
                     <button type="submit" disabled={isSubmitting} className="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition-all disabled:bg-purple-300 mt-4">
-                        {isSubmitting ? 'Uploading & Saving...' : 'Save Business'}
+                        {isSubmitting ? 'Saving Business...' : 'Save Business'}
                     </button>
                 </form>
             </div>
@@ -61,33 +46,7 @@ function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
     );
 }
 
-// --- Función de Subida de Imagen CON DEPURACIÓN ---
-const uploadImage = async (file, user) => {
-    // Verificar sesión actual de Supabase
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    
-    if (!user) {
-        throw new Error('User not authenticated for upload');
-    }
-
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('business-images')
-        .upload(filePath, file);
-    
-    if (uploadError) {
-        throw uploadError;
-    }
-
-    const { data } = supabase.storage.from('business-images').getPublicUrl(filePath);
-    
-    return data.publicUrl;
-};
-
-// Error Boundary Component
+// --- Error Boundary Component ---
 class ErrorBoundary extends Component {
     constructor(props) {
         super(props);
@@ -138,24 +97,25 @@ class ErrorBoundary extends Component {
     }
 }
 
-// Helper function for showing notifications
+// --- Helper function for showing notifications ---
 const showNotification = (message, type = 'success') => {
     const isSuccess = type === 'success';
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 ${isSuccess ? 'bg-green-100 border-green-500 text-green-700' : 'bg-red-100 border-red-500 text-red-700'} border-l-4 p-4 rounded shadow-md z-50`;
-    
+
     const icon = isSuccess
         ? '<svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>'
         : '<svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
-    
+
     notification.innerHTML = `<div class="flex items-center">${icon}${message}</div>`;
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         notification.remove();
     }, isSuccess ? 3000 : 5000);
 };
 
+// --- Dashboard Page Component ---
 function DashboardPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const queryClient = useQueryClient();
@@ -165,7 +125,7 @@ function DashboardPage() {
         queryKey: ['user'],
         queryFn: async () => {
             const { data: { session }, error } = await supabase.auth.getSession();
-            
+
             if (!session) {
                 navigate('/register');
                 return null;
@@ -186,19 +146,15 @@ function DashboardPage() {
     });
 
     const addBusinessMutation = useMutation({
-        mutationFn: async ({ businessData, files }) => {
+        mutationFn: async ({ businessData }) => {
             if (!user) {
                 throw new Error("User not found.");
             }
 
-            const imageUrls = await Promise.all(
-                files.map(file => uploadImage(file, user))
-            );
-            
-            const dataToInsert = { ...businessData, user_id: user.id, images: imageUrls };
-            
+            const dataToInsert = { ...businessData, user_id: user.id };
+
             const { data, error: insertError } = await supabase.from('businesses').insert([dataToInsert]).select();
-            
+
             if (insertError) throw insertError;
             return data;
         },
@@ -227,7 +183,6 @@ function DashboardPage() {
     });
 
     const handleDeleteBusiness = (businessId, businessName) => {
-        // Create a custom confirmation dialog
         const confirmDialog = document.createElement('div');
         confirmDialog.className = 'fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4';
         confirmDialog.innerHTML = `
@@ -240,20 +195,19 @@ function DashboardPage() {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(confirmDialog);
-        
-        // Add event listeners
+
         document.getElementById('cancel-delete').addEventListener('click', () => {
             confirmDialog.remove();
         });
-        
+
         document.getElementById('confirm-delete').addEventListener('click', () => {
             deleteBusinessMutation.mutate(businessId);
             confirmDialog.remove();
         });
     };
-    
+
     if (isLoadingBusinesses || !user) {
         return (
             <div className="max-w-7xl mx-auto p-6">
@@ -276,7 +230,6 @@ function DashboardPage() {
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Welcome to your Dashboard</h1>
                     <p className="text-gray-600 mt-1">Logged in as: {user.email}</p>
-                    {/* Debug info removed */}
                 </div>
                 <div className="mt-12 border-t pt-8">
                     <div className="flex justify-between items-center mb-6">
@@ -298,6 +251,11 @@ function DashboardPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
+                                        {/* NEW: Add Photos Button */}
+                                        <Link to={`/dashboard/edit/${business.id}#photos`} className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                                            <ImageIcon className="w-4 h-4" />
+                                            Add Photos
+                                        </Link>
                                         <Link to={`/dashboard/edit/${business.id}`} className="text-sm font-semibold text-purple-600 hover:underline flex items-center gap-1">
                                             <Edit className="w-4 h-4" />
                                             Edit
@@ -318,8 +276,8 @@ function DashboardPage() {
                 </div>
             </div>
             {isModalOpen && (
-                <ListBusinessModal 
-                    onClose={() => setIsModalOpen(false)} 
+                <ListBusinessModal
+                    onClose={() => setIsModalOpen(false)}
                     onAddBusiness={addBusinessMutation.mutate}
                     isSubmitting={addBusinessMutation.isPending}
                 />

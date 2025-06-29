@@ -1,48 +1,48 @@
 // src/PhotoUploadManager.jsx
-import React, { useState, useEffect } from 'react'; // Asegúrate de importar useEffect también
+import React, { useState, useEffect } from 'react';
 
-// Usando variables de entorno - ¡Asegúrate de que estas estén definidas en tu .env.local!
+// Using environment variables for Supabase configuration
 const UPLOAD_FUNCTION_URL = import.meta.env.VITE_SUPABASE_UPLOAD_URL || 
   'https://dkisgcdpimagrpujochw.supabase.co/functions/v1/upload-photos';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
   const [files, setFiles] = useState([]);
-  const [previews, setPreviews] = useState([]); // Nuevo estado para las previsualizaciones
+  const [previews, setPreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0); // Progreso simulado
+  const [uploadProgress, setUploadProgress] = useState(0); // Simulated progress
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Validación de archivos (sugerencia 2)
+  // File validation
   const validateFiles = (fileList) => {
     const MAX_FILE_SIZE_MB = 5;
-    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024; // 5MB por archivo
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024; // 5MB per file
     const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    const MAX_FILES = 10; // Límite de 10 fotos por subida
+    const MAX_FILES = 10; // Max 10 photos per upload
 
     if (fileList.length === 0) {
-      setError('Por favor, selecciona al menos un archivo.');
+      setError('Please select at least one photo.'); // Text changed to English
       return false;
     }
 
     if (fileList.length > MAX_FILES) {
-      setError(`Solo se permiten un máximo de ${MAX_FILES} archivos por subida.`);
+      setError(`A maximum of ${MAX_FILES} files are allowed per upload.`); // Text changed to English
       return false;
     }
 
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        setError(`El archivo '${file.name}' es demasiado grande (máx. ${MAX_FILE_SIZE_MB}MB).`);
+        setError(`File '${file.name}' is too large (max. ${MAX_FILE_SIZE_MB}MB).`); // Text changed to English
         return false;
       }
       if (!ALLOWED_TYPES.includes(file.type)) {
-        setError(`El tipo de archivo '${file.name}' no está permitido. Solo JPG, PNG, WEBP.`);
+        setError(`File type not allowed for '${file.name}'. Only JPG, PNG, WEBP.`); // Text changed to English
         return false;
       }
     }
-    setError(null); // Limpia errores si la validación pasa
+    setError(null);
     return true;
   };
 
@@ -53,7 +53,6 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
       setFiles(selectedFiles);
       setSuccessMessage(null);
 
-      // Generar previsualizaciones (sugerencia 3)
       const newPreviews = selectedFiles.map(file => ({
         file,
         url: URL.createObjectURL(file),
@@ -63,29 +62,25 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
     } else {
       setFiles([]);
       setPreviews([]);
-      // El error ya fue seteado por validateFiles
     }
-    // Asegurarse de que el input de archivo se pueda volver a usar
     event.target.value = ''; 
   };
 
-  // Limpiar URLs de objetos cuando el componente se desmonte o las previsualizaciones cambien (sugerencia 3)
   useEffect(() => {
     return () => {
       previews.forEach(preview => URL.revokeObjectURL(preview.url));
     };
   }, [previews]);
 
-  // Función para eliminar un archivo de la selección (sugerencia 5)
   const removeFile = (indexToRemove) => {
     setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
     setPreviews(prevPreviews => prevPreviews.filter((_, index) => index !== indexToRemove));
-    setError(null); // Limpiar errores si el usuario quita un archivo problemático
+    setError(null);
   };
 
   const handleUpload = async () => {
     if (files.length === 0) {
-      setError('Por favor, selecciona al menos una foto para subir.');
+      setError('Please select at least one photo to upload.'); // Text changed to English
       return;
     }
 
@@ -101,7 +96,6 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
     });
 
     try {
-      // Simulación de progreso para la carga a la función Edge
       let currentProgress = 0;
       const interval = setInterval(() => {
         currentProgress += 10;
@@ -112,7 +106,6 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
         }
       }, 200);
 
-      // Realiza la solicitud a la función Edge
       const response = await fetch(UPLOAD_FUNCTION_URL, {
         method: 'POST',
         headers: {
@@ -121,55 +114,55 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
         body: formData,
       });
 
-      clearInterval(interval); // Detiene la simulación de progreso
+      clearInterval(interval);
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Error HTTP: ${response.status}`);
+        throw new Error(errorData.error || `HTTP Error: ${response.status}`); // Text changed to English
       }
 
       const result = await response.json();
-      console.log('Subida exitosa:', result);
-      setSuccessMessage(`¡${result.message || 'Fotos subidas correctamente!'} ${result.dbRecords?.length || 0} registro(s) en DB.`);
+      console.log('Upload successful:', result);
+      setSuccessMessage(`Photos uploaded successfully! ${result.dbRecords?.length || 0} record(s) in DB.`); // Text changed to English
       
       if (onUploadSuccess) {
         onUploadSuccess(result.dbRecords || result.publicUrls);
       }
       
-      setFiles([]); // Limpiar archivos seleccionados
-      setPreviews([]); // Limpiar previsualizaciones
-      setUploadProgress(100); // Finalizar progreso
+      setFiles([]);
+      setPreviews([]);
+      setUploadProgress(100);
       
     } catch (err) {
-      console.error('Error durante la subida:', err);
-      setError(`Error al subir fotos: ${err.message}`);
-      setUploadProgress(0); // Reiniciar progreso en caso de error
+      console.error('Error during upload:', err);
+      setError(`Error uploading photos: ${err.message}`); // Text changed to English
+      setUploadProgress(0);
     } finally {
       setUploading(false);
     }
   };
 
-  // Validación inicial de las variables de entorno al cargar el componente
+  // Initial config validation
   useEffect(() => {
     if (!UPLOAD_FUNCTION_URL || !SUPABASE_ANON_KEY) {
-      setError("Error de configuración: URL de función o clave Supabase Anon missing. Revisa tu archivo .env.local");
+      setError("Configuration Error: Supabase Function URL or Anon Key is missing. Check your .env.local file."); // Text changed to English
       console.error("VITE_SUPABASE_UPLOAD_URL or VITE_SUPABASE_ANON_KEY is not defined.");
     }
-  }, []); // Solo se ejecuta una vez al montar
+  }, []);
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">Gestionar Fotos del Negocio</h2>
+      <h2 className="text-xl font-semibold text-gray-800 mb-4">Manage Business Photos</h2> {/* Text changed to English */}
       
       <div className="mb-4">
         <label htmlFor="photo-upload" className="block text-gray-700 text-sm font-bold mb-2">
-          Selecciona fotos (PNG, JPG, WEBP - máx. 5MB c/u, hasta 10 archivos):
+          Select photos (PNG, JPG, WEBP - max. 5MB each, up to 10 files): {/* Text changed to English */}
         </label>
         <input
           type="file"
           id="photo-upload"
           multiple
-          accept="image/jpeg,image/png,image/webp" // Define los tipos aceptados
+          accept="image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
           className="block w-full text-sm text-gray-500
             file:mr-4 file:py-2 file:px-4
@@ -180,12 +173,11 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
         />
         {files.length > 0 && (
           <p className="mt-2 text-sm text-gray-600">
-            {files.length} archivo(s) seleccionado(s)
-          </p>
+            {files.length} file(s) selected
+          </p> // Text changed to English
         )}
       </div>
 
-      {/* Área de previsualización (sugerencia 3 y 5) */}
       {previews.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
           {previews.map((preview, index) => (
@@ -193,12 +185,12 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
               <img 
                 src={preview.url} 
                 alt={preview.name}
-                className="w-full h-24 object-cover" // Ajusta h-24 para tamaño de previsualización
+                className="w-full h-24 object-cover"
               />
               <button
                 onClick={() => removeFile(index)}
                 className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                aria-label={`Eliminar ${preview.name}`}
+                aria-label={`Remove ${preview.name}`} // Text changed to English
               >
                 ×
               </button>
@@ -218,12 +210,12 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
 
       <button
         onClick={handleUpload}
-        disabled={uploading || files.length === 0 || error} // Deshabilita si hay errores de validación
+        disabled={uploading || files.length === 0 || error}
         className={`w-full py-2 px-4 rounded-md text-white font-semibold transition-colors
           ${uploading || files.length === 0 || error ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}
         `}
       >
-        {uploading ? `Subiendo... (${uploadProgress}%)` : 'Subir Fotos'}
+        {uploading ? `Uploading... (${uploadProgress}%)` : 'Upload Photos'} {/* Text changed to English */}
       </button>
 
       {uploading && (

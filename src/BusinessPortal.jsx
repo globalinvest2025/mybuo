@@ -1,14 +1,14 @@
-// BusinessPortal.jsx - VERSIÓN FINAL, COMPLETA Y VERIFICADA
+// src/BusinessPortal.jsx - VERSIÓN CON TOGGLE SWITCH MORADO
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from './lib/supabaseClient';
-import { Search, MapPin, Star, Clock, Camera, Zap, List, Heart, Calendar, Coffee, Utensils, ShoppingBag, TrendingUp, Filter, Map as MapIcon, X } from 'lucide-react';
+import { Search, MapPin, Star, Clock, Camera, Zap, List, Heart, Calendar, Coffee, Utensils, ShoppingBag, TrendingUp, Filter, Map as MapIcon, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Arreglo para íconos de Leaflet
+// Leaflet icon fix
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
@@ -16,39 +16,148 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
-// Datos estáticos
+// Static data (no changes)
 const events = [ { id: 1, title: "Live Music - Jazz Night", business: "The Cozy Owl Cafe", date: "Friday 8:00 PM", category: "Music" } ];
 const collections = [ { title: "Perfect for Remote Work", icon: <Coffee className="w-6 h-6"/>, businesses: 12, color: "from-amber-500 to-orange-600" } ];
 
-// Función para obtener los datos de negocios
+// Function to fetch business data, now including associated photos
 const fetchBusinesses = async () => {
-    const { data, error } = await supabase.from('businesses').select('*');
+    const { data, error } = await supabase
+        .from('businesses')
+        .select('*, business_photos(url, order_index)')
+        .order('created_at', { ascending: false });
+
     if (error) throw new Error(error.message);
-    return data || [];
+    
+    const sortedBusinesses = (data || []).map(business => ({
+        ...business,
+        business_photos: business.business_photos 
+            ? business.business_photos.sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+            : []
+    }));
+
+    return sortedBusinesses;
 };
 
-// --- COMPONENTE MODAL DE DETALLE ---
+// --- Business Detail Modal Component ---
 function BusinessDetailModal({ business, onClose, renderStars }) {
     const allowedTourDomains = ['matterport.com', 'kuula.co', 'realsee.ai'];
     const isTourUrlValid = business.tour_3d_url && allowedTourDomains.some(domain => business.tour_3d_url.toLowerCase().includes(domain));
+    
+    // NEW STATE: Current photo index for navigation
+    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+    // UPDATED STATE: Toggle between modes (true = 3D Tour, false = Photos)
+    const [is3DTourMode, setIs3DTourMode] = useState(isTourUrlValid);
+
+    // Get the photos array from the business object
+    const photos = business.business_photos || [];
+    const hasPhotos = photos.length > 0;
+
+    // Get the URL for the currently displayed photo (with cache buster for fresh load)
+    const currentPhotoUrl = hasPhotos 
+        ? `${photos[currentPhotoIndex]?.url}?t=${new Date().getTime()}`
+        : 'https://placehold.co/800x600'; // Fallback
+
+    const handlePrevPhoto = () => {
+        setCurrentPhotoIndex(prevIndex => (prevIndex === 0 ? photos.length - 1 : prevIndex - 1));
+    };
+
+    const handleNextPhoto = () => {
+        setCurrentPhotoIndex(prevIndex => (prevIndex === photos.length - 1 ? 0 : prevIndex + 1));
+    };
+
+    // Effect to reset photo index and mode when business changes
+    useEffect(() => {
+        setCurrentPhotoIndex(0);
+        setIs3DTourMode(isTourUrlValid);
+    }, [business, isTourUrlValid]);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in-0">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col relative">
-                {/* La sección de la imagen/tour ya no tiene el botón de cerrar */}
-                <div className="w-full h-[28rem] bg-gray-200 rounded-t-2xl overflow-hidden flex-shrink-0">
-                    {isTourUrlValid ? (
-                        <iframe src={business.tour_3d_url} title={`3D tour of ${business.name}`} className="w-full h-full border-0" allow="fullscreen; vr" allowFullScreen />
+                {/* Image/Tour section SIN toggle */}
+                <div className="w-full h-[28rem] bg-gray-200 rounded-t-2xl overflow-hidden flex-shrink-0 relative">
+                    {/* Media Content */}
+                    {is3DTourMode && isTourUrlValid ? (
+                        <iframe 
+                            src={business.tour_3d_url} 
+                            title={`3D tour of ${business.name}`} 
+                            className="w-full h-full border-0" 
+                            allow="fullscreen; vr" 
+                            allowFullScreen 
+                        />
+                    ) : hasPhotos ? (
+                        <>
+                            <img src={currentPhotoUrl} alt={business.name} className="w-full h-full object-cover" />
+                            {/* Navigation buttons for photos */}
+                            {photos.length > 1 && (
+                                <>
+                                    <button 
+                                        onClick={handlePrevPhoto} 
+                                        className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                                        aria-label="Previous photo"
+                                    >
+                                        <ChevronLeft className="w-6 h-6" />
+                                    </button>
+                                    <button 
+                                        onClick={handleNextPhoto} 
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                                        aria-label="Next photo"
+                                    >
+                                        <ChevronRight className="w-6 h-6" />
+                                    </button>
+                                    <span className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1 rounded-full">
+                                        {currentPhotoIndex + 1} / {photos.length}
+                                    </span>
+                                </>
+                            )}
+                        </>
                     ) : (
-                        <img src={(business.images && business.images[0]) || 'https://placehold.co/800x600'} alt={business.name} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-lg">
+                            No media available
+                        </div>
                     )}
                 </div>
-                {/* El botón de cerrar se mueve aquí, al área de contenido */}
-                <div className="p-8 overflow-y-auto relative">
-                    <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 z-10 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                    <h2 className="text-3xl font-bold mb-2 pr-12">{business.name}</h2>
+
+                {/* Toggle Switch y botón cerrar en la misma línea */}
+                {(isTourUrlValid && hasPhotos) && (
+                    <div className="flex justify-center items-center mb-3 relative">
+                        {/* Toggle centrado */}
+                        <div className="bg-black/20 backdrop-blur-sm rounded-full p-1 shadow-lg">
+                            <div className="flex rounded-full bg-black/30">
+                                <button
+                                    onClick={() => setIs3DTourMode(true)}
+                                    className={`px-4 py-2 text-xs font-medium rounded-full transition-all ${
+                                        is3DTourMode 
+                                            ? 'bg-purple-600 text-white shadow-sm' 
+                                            : 'text-white/80 hover:text-white'
+                                    }`}
+                                >
+                                    3D Tour
+                                </button>
+                                <button
+                                    onClick={() => setIs3DTourMode(false)}
+                                    className={`px-4 py-2 text-xs font-medium rounded-full transition-all ${
+                                        !is3DTourMode 
+                                            ? 'bg-purple-600 text-white shadow-sm' 
+                                            : 'text-white/80 hover:text-white'
+                                    }`}
+                                >
+                                    Photo Gallery
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Botón cerrar alineado a la derecha */}
+                        <button onClick={onClose} className="absolute right-0 text-gray-400 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors" aria-label="Close modal">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Close button moved to content area */}
+                <div className="px-8 pb-8 pt-4 overflow-y-auto relative">
+                    <h2 className="text-3xl font-bold mb-2">{business.name}</h2>
                     <div className="flex items-center gap-2 mb-4"><div className="flex">{renderStars(business.rating)}</div><span className="text-gray-600">({business.reviewsCount || 0} reviews)</span></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-gray-700 mb-6">
                         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.location)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group">
@@ -78,7 +187,7 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
     );
 }
 
-// --- COMPONENTE PRINCIPAL ---
+// --- MAIN COMPONENT ---
 export default function BusinessPortal() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedBusiness, setSelectedBusiness] = useState(null);
@@ -92,6 +201,7 @@ export default function BusinessPortal() {
 
     useEffect(() => { localStorage.setItem('mybuo-favorites', JSON.stringify(Array.from(favorites))); }, [favorites]);
 
+    // Fetch businesses, now including associated photos
     const { data: businesses, isLoading, isError, error } = useQuery({ queryKey: ['businesses'], queryFn: fetchBusinesses });
 
     const dataByCategory = useMemo(() => {
@@ -147,24 +257,33 @@ export default function BusinessPortal() {
         setFavorites(newFavorites);
     };
 
-    const BusinessCard = ({ business, featured = false }) => (
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-2xl hover:scale-105 cursor-pointer" onClick={() => setSelectedBusiness(business)}>
-            <div className="relative">
-                <img src={(business.images && business.images[0]) || 'https://placehold.co/400x200'} alt={business.name} className="w-full h-48 object-cover" />
-                <div className="absolute top-3 left-3">
-                    {business.tour_3d_url ? (<div className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-lg tracking-wider"><Camera className="w-4 h-4" /><span>3D TOUR</span></div>) : business.isNew ? (<div className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">New</div>) : null}
+    // --- Business Card Component ---
+    const BusinessCard = ({ business, featured = false }) => {
+        // Get the primary image for the card (first in sorted business_photos)
+        const primaryImageUrl = (business.business_photos && business.business_photos.length > 0)
+            ? `${business.business_photos[0].url}?t=${new Date().getTime()}` // Use cache buster
+            : 'https://placehold.co/400x200'; // Fallback image
+
+        return (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-2xl hover:scale-105 cursor-pointer" onClick={() => setSelectedBusiness(business)}>
+                <div className="relative">
+                    {/* Use the primary image from business_photos for the card */}
+                    <img src={primaryImageUrl} alt={business.name} className="w-full h-48 object-cover" /> 
+                    <div className="absolute top-3 left-3">
+                        {business.tour_3d_url ? (<div className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-lg tracking-wider"><Camera className="w-4 h-4" /><span>3D TOUR</span></div>) : business.isNew ? (<div className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">New</div>) : null}
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); toggleFavorite(business.id); }} className="absolute top-3 right-3 p-2 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors" aria-label="Toggle favorite"><Heart className={`w-5 h-5 transition-all ${favorites.has(business.id) ? 'text-red-500 fill-red-500' : 'text-gray-600'}`} /></button>
+                    {featured && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4"><div className="flex items-center text-white text-sm"><Zap className="w-4 h-4 mr-1 text-yellow-400" />Featured</div></div>}
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); toggleFavorite(business.id); }} className="absolute top-3 right-3 p-2 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white transition-colors"><Heart className={`w-5 h-5 transition-all ${favorites.has(business.id) ? 'text-red-500 fill-red-500' : 'text-gray-600'}`} /></button>
-                {featured && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4"><div className="flex items-center text-white text-sm"><Zap className="w-4 h-4 mr-1 text-yellow-400" />Featured</div></div>}
+                <div className="p-4">
+                    <div className="flex justify-between items-start mb-2"><h3 className="font-bold text-lg text-gray-900 truncate">{business.name}</h3><span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{business.category}</span></div>
+                    <div className="flex items-center mb-2">{renderStars(business.rating)}<span className="ml-1 text-sm font-semibold">{business.rating || 'N/A'}</span><span className="ml-1 text-sm text-gray-500">({business.reviewsCount || 0})</span></div>
+                    <div className="flex items-center text-sm text-gray-600 mb-3"><MapPin className="w-4 h-4 mr-1" />{business.location}</div>
+                    {business.specialOffer && <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg border-l-4 border-blue-500"><p className="text-sm font-semibold text-blue-800">{business.specialOffer}</p></div>}
+                </div>
             </div>
-            <div className="p-4">
-                <div className="flex justify-between items-start mb-2"><h3 className="font-bold text-lg text-gray-900 truncate">{business.name}</h3><span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{business.category}</span></div>
-                <div className="flex items-center mb-2">{renderStars(business.rating)}<span className="ml-1 text-sm font-semibold">{business.rating || 'N/A'}</span><span className="ml-1 text-sm text-gray-500">({business.reviewsCount || 0})</span></div>
-                <div className="flex items-center text-sm text-gray-600 mb-3"><MapPin className="w-4 h-4 mr-1" />{business.location}</div>
-                {business.specialOffer && <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg border-l-4 border-blue-500"><p className="text-sm font-semibold text-blue-800">{business.specialOffer}</p></div>}
-            </div>
-        </div>
-    );
+        );
+    };
 
     if (isLoading) { return <main className="max-w-7xl mx-auto p-6 text-center text-xl font-semibold">Loading MyBuo Portal...</main>; }
     if (isError) { return <main className="max-w-7xl mx-auto p-6 text-center text-xl font-semibold text-red-500">Error: {error.message}</main>; }
@@ -174,8 +293,8 @@ export default function BusinessPortal() {
             <div className="relative mb-8">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input type="text" placeholder="Search for businesses, services, stores..."
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white text-lg focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-lg"
-                  value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white text-lg focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-lg"
+                    value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                 <div className="bg-white rounded-2xl shadow-lg p-6 text-center transition-transform hover:scale-105"><div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><TrendingUp className="w-8 h-8 text-blue-600" /></div><h3 className="text-2xl font-bold text-gray-900">{allBusinesses.length}</h3><p className="text-gray-600">Businesses Listed</p></div>
