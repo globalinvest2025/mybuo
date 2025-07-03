@@ -13,85 +13,42 @@ export default function Layout() {
   const location = useLocation();
 
   useEffect(() => {
-    let isMounted = true;
+    setIsLoading(true);
 
-    const initializeAuth = async () => {
-      try {
-        // 1. Verificar si hay tokens en la URL (callback de Google)
-        const hash = window.location.hash;
-        
-        if (hash.includes('access_token')) {
-          console.log('🔍 Tokens detectados en URL, procesando...');
-          
-          // Extraer tokens de la URL
-          const hashParams = new URLSearchParams(hash.substring(1));
-          const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-          
-          if (accessToken && refreshToken) {
-            console.log('📝 Estableciendo sesión con tokens...');
-            
-            // Establecer la sesión en Supabase
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            
-            if (data.session && !error && isMounted) {
-              console.log('✅ Sesión establecida exitosamente:', data.session.user.email);
-              setSession(data.session);
-              
-              // Limpiar la URL
-              window.history.replaceState({}, document.title, window.location.pathname);
-              
-              // Redirigir al dashboard
-              navigate('/dashboard');
-            } else if (error) {
-              console.error('❌ Error al establecer sesión:', error);
-            }
-          }
-        } else {
-          // 2. Si no hay tokens en URL, verificar sesión existente
-          const { data: { session } } = await supabase.auth.getSession();
-          if (isMounted) {
-            setSession(session);
-            console.log(session ? '✅ Sesión existente encontrada' : '📭 No hay sesión activa');
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error inicializando autenticación:', error);
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    // 3. Listener para cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return;
-      
-      console.log('🔄 Cambio de autenticación:', event);
+      console.log(`[Layout] 🔄 Auth Event: ${event}`);
       setSession(session);
 
-      // Solo redirigir si no estamos procesando tokens de URL
-      if (!window.location.hash.includes('access_token')) {
-        if (event === "SIGNED_IN" && session) {
-          console.log('📍 Redirigiendo a dashboard...');
+      // This is the logic that controls EVERYTHING. Executes at the moment of the event.
+      if (event === "SIGNED_IN") {
+        // Read the current URL directly from the browser
+        const params = new URLSearchParams(window.location.search);
+
+        // If the 'review=true' parameter is NOT there, then redirect to dashboard
+        if (!params.has('review')) {
+          console.log("[Layout] ✅ User logged in. Not review flow. Redirecting to dashboard...");
           navigate('/dashboard');
-        } else if (event === "SIGNED_OUT") {
-          console.log('📍 Redirigiendo a inicio...');
-          navigate('/');
+        } else {
+          console.log("[Layout] ✅ User logged in in review flow. NO REDIRECT.");
         }
+      } else if (event === "SIGNED_OUT") {
+        console.log("[Layout] 📍 Redirecting to home...");
+        navigate('/');
       }
+
+      // When initial session loads or changes, end loading state
+      setIsLoading(false);
     });
 
-    // Inicializar
-    initializeAuth();
+    // Check if session already exists when page loads
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        setIsLoading(false); // If no session, end loading anyway
+      }
+      // If there is a session, onAuthStateChange will handle it with INITIAL_SESSION event
+    });
 
-    // Cleanup
     return () => {
-      isMounted = false;
       subscription.unsubscribe();
     };
   }, [navigate]);
@@ -118,12 +75,8 @@ export default function Layout() {
       <header className="bg-white/80 backdrop-blur-sm sticky top-0 z-30 border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-3">
-              <img src={logo} alt="MyBuo Logo" className="h-9 w-auto" />
-              <span className="text-2xl font-bold text-gray-900">
-                My<span className="text-purple-600">Buo</span>
-                <span className="text-gray-900">.com</span>
-              </span>
+            <Link to="/" className="flex items-center">
+              <img src={logo} alt="MyBuo" className="h-10 w-auto" />
             </Link>
             <div className="hidden md:flex items-center gap-4">
                 <div className="w-px h-6 bg-gray-300"></div>
@@ -160,11 +113,70 @@ export default function Layout() {
         </div>
       </header>
       <main className="flex-grow">
-        <Outlet />
+        <Outlet context={{ user: session?.user || null, authLoading: isLoading }} />
       </main>
-      <footer className="bg-gray-800 text-gray-300 py-8">
-        <div className="max-w-7xl mx-auto text-center px-6">
-            <p>&copy; {new Date().getFullYear()} MyBuo.com. All rights reserved.</p>
+      <footer className="bg-gray-800 text-gray-300 py-12">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Logo and tagline */}
+            <div className="md:col-span-2">
+              <div className="flex items-center mb-4">
+                <h2 className="text-2xl font-bold text-white">MyBuo.com</h2>
+              </div>
+              <p className="text-gray-400 text-sm mb-4">
+                Your premier destination for immersive 3D business tours and virtual experiences.
+              </p>
+            </div>
+            
+            {/* Contact Information */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Contact Us</h3>
+              <div className="space-y-2 text-sm">
+                <p>
+                  <a href="mailto:info@mybuo.com" className="text-gray-300 hover:text-white transition-colors">
+                    info@mybuo.com
+                  </a>
+                </p>
+                <p>
+                  <a href="tel:+12532101981" className="text-gray-300 hover:text-white transition-colors">
+                    +1 253 210 1981
+                  </a>
+                </p>
+              </div>
+            </div>
+            
+            {/* Quick Links */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Quick Links</h3>
+              <div className="space-y-2 text-sm">
+                <p>
+                  <Link to="/privacy" className="text-gray-300 hover:text-white transition-colors">
+                    Privacy Policy
+                  </Link>
+                </p>
+                <p>
+                  <Link to="/terms" className="text-gray-300 hover:text-white transition-colors">
+                    Terms of Service
+                  </Link>
+                </p>
+                <p>
+                  <Link to="/register" className="text-gray-300 hover:text-white transition-colors">
+                    List Your Business
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Bottom border and copyright */}
+          <div className="border-t border-gray-700 pt-6">
+            <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
+              <p>&copy; {new Date().getFullYear()} MyBuo All rights reserved.</p>
+              <p className="mt-2 md:mt-0">
+                Empowering businesses through virtual tours
+              </p>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

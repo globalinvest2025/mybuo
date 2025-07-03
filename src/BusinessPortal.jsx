@@ -2,9 +2,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useOutletContext } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
-import { Search, MapPin, Star, Clock, Camera, Zap, List, Heart, Calendar, Coffee, Utensils, ShoppingBag, TrendingUp, Filter, Map as MapIcon, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, MapPin, Star, Clock, Camera, Zap, List, Heart, Calendar, Coffee, Utensils, ShoppingBag, TrendingUp, Filter, Map as MapIcon, X, ChevronLeft, ChevronRight, Phone, Plus, Edit3, Trash2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import ReviewLoginModal from './ReviewLoginModal.jsx';
+import ReviewForm from './ReviewForm.jsx';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -16,42 +19,156 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
-// Static data (no changes)
-const events = [ { id: 1, title: "Live Music - Jazz Night", business: "The Cozy Owl Cafe", date: "Friday 8:00 PM", category: "Music" } ];
+// Static data for collections (events now come from database)
 const collections = [ { title: "Perfect for Remote Work", icon: <Coffee className="w-6 h-6"/>, businesses: 12, color: "from-amber-500 to-orange-600" } ];
 
-// Function to fetch business data, now including associated photos
+// Function to fetch events data from database
+const fetchEvents = async () => {
+    const { data, error } = await supabase
+        .from('events')
+        .select(`
+            *,
+            businesses!inner(name, category)
+        `)
+        .eq('is_active', true)
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true })
+        .limit(10);
+
+    if (error) throw new Error(error.message);
+    
+    return (data || []).map(event => ({
+        id: event.id,
+        title: event.title,
+        business: event.businesses.name,
+        date: new Date(event.start_date).toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }),
+        category: event.businesses.category,
+        description: event.description,
+        photo_url: event.photo_url
+    }));
+};
+
+// Function to fetch business data, now including associated photos and real reviews
 const fetchBusinesses = async () => {
     const { data, error } = await supabase
         .from('businesses')
-        .select('*, business_photos(url, order_index)')
+        .select('*, business_photos(id, url, order_index)')
         .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
     
-    const sortedBusinesses = (data || []).map(business => ({
-        ...business,
-        business_photos: business.business_photos 
-            ? business.business_photos.sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
-            : []
-    }));
+    // Fetch reviews for all businesses in one query
+    const { data: allReviews } = await supabase
+        .from('reviews')
+        .select('business_id, rating');
+    
+    const sortedBusinesses = (data || []).map(business => {
+        // Calculate rating from real reviews in database
+        const businessReviews = allReviews?.filter(review => review.business_id === business.id) || [];
+        let calculatedRating = 0;
+        let reviewsCount = businessReviews.length;
+        
+        if (businessReviews.length > 0) {
+            const totalRating = businessReviews.reduce((sum, review) => sum + (review.rating || 0), 0);
+            calculatedRating = totalRating / businessReviews.length;
+        }
+        
+        return {
+            ...business,
+            rating: calculatedRating, // Real rating from database
+            reviewsCount: reviewsCount, // Real review count from database
+            business_photos: business.business_photos 
+                ? business.business_photos
+                    .sort((a, b) => {
+                        // Handle null order_index values - put them at the end
+                        if (a.order_index === null && b.order_index === null) return 0;
+                        if (a.order_index === null) return 1;
+                        if (b.order_index === null) return -1;
+                        return a.order_index - b.order_index;
+                    })
+                : []
+        };
+    });
 
+    console.log('🔍 Businesses fetched with photos and real reviews:', sortedBusinesses);
     return sortedBusinesses;
 };
 
 // --- Business Detail Modal Component ---
-function BusinessDetailModal({ business, onClose, renderStars }) {
+function BusinessDetailModal({ business, onClose, renderStars, user, authLoading }) {
     const allowedTourDomains = ['matterport.com', 'kuula.co', 'realsee.ai'];
     const isTourUrlValid = business.tour_3d_url && allowedTourDomains.some(domain => business.tour_3d_url.toLowerCase().includes(domain));
     
-    // NEW STATE: Current photo index for navigation
+    // Photo and tour state
     const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-    // UPDATED STATE: Toggle between modes (true = 3D Tour, false = Photos)
     const [is3DTourMode, setIs3DTourMode] = useState(isTourUrlValid);
+
+    // Review state
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [showReviewForm, setShowReviewForm] = useState(false);
+    const [editingReview, setEditingReview] = useState(null);
 
     // Get the photos array from the business object
     const photos = business.business_photos || [];
     const hasPhotos = photos.length > 0;
+
+    // React to auth state changes from Layout (no duplicate listener)
+    useEffect(() => {
+        // If auth loading has finished AND we have a user...
+        if (!authLoading && user) {
+            const urlParams = new URLSearchParams(window.location.search);
+            // ...and URL indicates we should show review form...
+            if (urlParams.get('review') === 'true') {
+                console.log("✨ Modal detects user and ?review=true. Showing form.");
+                setShowLoginModal(false); // Hide login modal if it was open
+                setShowReviewForm(true); // Show review form
+                // Clean up URL to remove the parameter
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        // This effect runs when authentication finishes or user changes
+    }, [user, authLoading]);
+
+    // Helper function to get user details via secure RPC
+    const getReviewUserDetails = async (userId) => {
+        const { data, error } = await supabase.rpc('get_user_display_name', { user_id_input: userId });
+        if (error) {
+            console.error('Error fetching user name:', error);
+            return 'Anonymous';
+        }
+        return data && data.length > 0 ? data[0].display_name : 'Anonymous';
+    };
+
+    // Fetch reviews for this business
+    const { data: reviews, isLoading: reviewsLoading } = useQuery({
+        queryKey: ['reviews', business.id],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('reviews')
+                .select('*, user_id')
+                .eq('business_id', business.id)
+                .order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            // Get user details for each review using secure RPC
+            const reviewsWithUsers = await Promise.all(
+                data.map(async (review) => ({
+                    ...review,
+                    user_name: await getReviewUserDetails(review.user_id)
+                }))
+            );
+            
+            return reviewsWithUsers;
+        }
+    });
+
+    // Get current user's review if exists
+    const userReview = user ? reviews?.find(r => r.user_id === user.id) : null;
 
     // Get the URL for the currently displayed photo (with cache buster for fresh load)
     const currentPhotoUrl = hasPhotos 
@@ -71,6 +188,19 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
         setCurrentPhotoIndex(0);
         setIs3DTourMode(isTourUrlValid);
     }, [business, isTourUrlValid]);
+
+    const handleWriteReview = () => {
+        if (!user) {
+            setShowLoginModal(true);
+        } else {
+            setShowReviewForm(true);
+        }
+    };
+
+    const handleEditReview = (review) => {
+        setEditingReview(review);
+        setShowReviewForm(true);
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in-0">
@@ -119,10 +249,10 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
                     )}
                 </div>
 
-                {/* Toggle Switch y botón cerrar en la misma línea */}
-                {(isTourUrlValid && hasPhotos) && (
+                {/* Toggle Switch y botón cerrar - Solo cuando hay toggle O siempre el botón */}
+                {(isTourUrlValid && hasPhotos) ? (
+                    // Caso 1: Hay 3D + fotos - Mostrar toggle + botón cerrar
                     <div className="flex justify-center items-center mb-3 relative">
-                        {/* Toggle centrado */}
                         <div className="bg-black/20 backdrop-blur-sm rounded-full p-1 shadow-lg">
                             <div className="flex rounded-full bg-black/30">
                                 <button
@@ -148,14 +278,21 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
                             </div>
                         </div>
                         
-                        {/* Botón cerrar alineado a la derecha */}
+                        {/* Botón cerrar cuando hay toggle */}
                         <button onClick={onClose} className="absolute right-0 text-gray-400 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors" aria-label="Close modal">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                ) : (
+                    // Caso 2: Solo fotos - Solo botón cerrar, sin espacio extra
+                    <div className="flex justify-end mb-3">
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors" aria-label="Close modal">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
                 )}
 
-                {/* Close button moved to content area */}
+                {/* Área de contenido */}
                 <div className="px-8 pb-8 pt-4 overflow-y-auto relative">
                     <h2 className="text-3xl font-bold mb-2">{business.name}</h2>
                     <div className="flex items-center gap-2 mb-4"><div className="flex">{renderStars(business.rating)}</div><span className="text-gray-600">({business.reviewsCount || 0} reviews)</span></div>
@@ -164,31 +301,114 @@ function BusinessDetailModal({ business, onClose, renderStars }) {
                             <MapPin className="w-5 h-5 text-purple-500"/>
                             <span className="group-hover:underline group-hover:text-purple-700 transition-colors">{business.location}</span>
                         </a>
-                        <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-purple-500"/>{business.hours}</div>
+                        {business.phone && (
+                            <a href={`tel:${business.phone}`} className="flex items-center gap-2 group">
+                                <Phone className="w-5 h-5 text-purple-500"/>
+                                <span className="group-hover:underline group-hover:text-purple-700 transition-colors">{business.phone}</span>
+                            </a>
+                        )}
+                        <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-purple-500"/>{business.hours || 'Hours not available'}</div>
                         <div className="flex items-center gap-2"><Zap className="w-5 h-5 text-purple-500"/>{business.category}</div>
                         {isTourUrlValid && (<div className="flex items-center gap-2"><Camera className="w-5 h-5 text-purple-500"/>Virtual 3D Tour available</div>)}
                     </div>
                     {business.specialOffer && (<div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-l-4 border-blue-500 mb-6"><h3 className="font-semibold text-blue-800 mb-1">Special Offer</h3><p className="text-blue-700">{business.specialOffer}</p></div>)}
-                    <h3 className="text-xl font-bold mb-4">Reviews</h3>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-bold">Reviews ({reviews?.length || 0})</h3>
+                        <button
+                            onClick={handleWriteReview}
+                            disabled={authLoading}
+                            className="bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-700 transition-colors flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            <Plus className="w-4 h-4" />
+                            {authLoading 
+                                ? 'Verifying...' 
+                                : userReview ? 'Edit Review' : 'Write Review'
+                            }
+                        </button>
+                    </div>
+                    
                     <div className="space-y-4">
-                        {business.reviewsList && business.reviewsList.length > 0 ? (
-                            business.reviewsList.map((review, i) => (
-                                <div key={i} className="border-l-4 border-purple-200 pl-4">
-                                    <div className="flex items-center gap-2 mb-1">{renderStars(review.rating)}</div>
-                                    <p className="text-gray-800 my-1">"{review.comment}"</p>
-                                    <p className="text-sm text-gray-500 font-semibold">- {review.user}</p>
+                        {reviewsLoading ? (
+                            <div className="text-center py-4">
+                                <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-purple-600 border-r-transparent"></div>
+                                <p className="text-sm text-gray-500 mt-2">Loading reviews...</p>
+                            </div>
+                        ) : reviews && reviews.length > 0 ? (
+                            reviews.map((review) => (
+                                <div key={review.id} className="border-l-4 border-purple-200 pl-4 relative">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className="flex">{renderStars(review.rating)}</div>
+                                                <span className="text-sm text-gray-500">
+                                                    {new Date(review.created_at).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            {review.comment && (
+                                                <p className="text-gray-800 my-2">"{review.comment}"</p>
+                                            )}
+                                            <p className="text-sm text-gray-500 font-semibold">- {review.user_name}</p>
+                                        </div>
+                                        
+                                        {/* Edit/Delete buttons for user's own review */}
+                                        {user && review.user_id === user.id && (
+                                            <div className="flex items-center gap-2 ml-4">
+                                                <button
+                                                    onClick={() => handleEditReview(review)}
+                                                    className="text-purple-600 hover:text-purple-800 p-1"
+                                                    title="Edit Review"
+                                                >
+                                                    <Edit3 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ))
-                        ) : <p className="text-gray-500">No reviews yet.</p>}
+                        ) : (
+                            <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-lg">
+                                <Star className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                                <p className="text-gray-500 mb-2">No reviews yet</p>
+                                <p className="text-sm text-gray-400">Be the first to share your experience!</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
+            
+            {/* Review Login Modal */}
+            {showLoginModal && (
+                <ReviewLoginModal
+                    onClose={() => setShowLoginModal(false)}
+                    businessName={business.name}
+                    onLoginSuccess={() => {
+                        setShowLoginModal(false);
+                        setShowReviewForm(true);
+                    }}
+                />
+            )}
+            
+            {/* Review Form Modal */}
+            {showReviewForm && (
+                <ReviewForm
+                    businessId={business.id}
+                    businessName={business.name}
+                    user={user}
+                    existingReview={editingReview}
+                    onClose={() => {
+                        setShowReviewForm(false);
+                        setEditingReview(null);
+                    }}
+                />
+            )}
         </div>
     );
 }
 
 // --- MAIN COMPONENT ---
 export default function BusinessPortal() {
+    // Get auth state from Layout context
+    const { user, authLoading } = useOutletContext();
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedBusiness, setSelectedBusiness] = useState(null);
     const [activeTab, setActiveTab] = useState('featured');
@@ -203,16 +423,29 @@ export default function BusinessPortal() {
 
     // Fetch businesses, now including associated photos
     const { data: businesses, isLoading, isError, error } = useQuery({ queryKey: ['businesses'], queryFn: fetchBusinesses });
+    
+    // Fetch events from database
+    const { data: events } = useQuery({ queryKey: ['events'], queryFn: fetchEvents });
+
+    // Apply global search filter to all businesses first
+    const filteredBusinesses = useMemo(() => {
+        if (!searchTerm) return businesses || [];
+        return (businesses || []).filter(business => 
+            business.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            business.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            business.location.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [businesses, searchTerm]);
 
     const dataByCategory = useMemo(() => {
-        if (!businesses) return {};
-        return businesses.reduce((acc, business) => {
+        if (!filteredBusinesses) return {};
+        return filteredBusinesses.reduce((acc, business) => {
             const cat = business.category || 'general';
             if (!acc[cat]) { acc[cat] = []; }
             acc[cat].push(business);
             return acc;
         }, {});
-    }, [businesses]);
+    }, [filteredBusinesses]);
     
     useEffect(() => {
         if (!category && dataByCategory && Object.keys(dataByCategory).length > 0) {
@@ -220,13 +453,24 @@ export default function BusinessPortal() {
         }
     }, [dataByCategory, category]);
 
-    const allBusinesses = useMemo(() => businesses || [], [businesses]);
-    const featuredBusinesses = useMemo(() => allBusinesses.filter(b => b.featured), [allBusinesses]);
+    const allBusinesses = useMemo(() => filteredBusinesses, [filteredBusinesses]);
+    // Auto-feature first 6 businesses (oldest registered) until we have adequate traffic
+    const featuredBusinesses = useMemo(() => {
+        const manuallyFeatured = allBusinesses.filter(b => b.featured);
+        if (manuallyFeatured.length >= 6) {
+            return manuallyFeatured;
+        }
+        // If less than 6 manually featured, add oldest businesses to reach 6
+        const oldestBusinesses = [...allBusinesses]
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            .slice(0, 6);
+        return oldestBusinesses;
+    }, [allBusinesses]);
     const newBusinesses = useMemo(() => [...allBusinesses].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6), [allBusinesses]);
     
     const filteredAndSortedData = useMemo(() => {
         let items = dataByCategory[category] || [];
-        if (searchTerm) { items = items.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase())); }
+        // No need to filter by searchTerm here since it's already applied globally
         if (filterOpenNow) {
             const now = new Date();
             const currentHour = now.getHours();
@@ -244,7 +488,7 @@ export default function BusinessPortal() {
             return 0;
         });
         return items;
-    }, [dataByCategory, category, searchTerm, filterOpenNow, filterRating, sortBy]);
+    }, [dataByCategory, category, filterOpenNow, filterRating, sortBy]);
 
     const renderStars = (rating) => {
         const fullStars = Math.floor(rating || 0);
@@ -299,7 +543,7 @@ export default function BusinessPortal() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                 <div className="bg-white rounded-2xl shadow-lg p-6 text-center transition-transform hover:scale-105"><div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><TrendingUp className="w-8 h-8 text-blue-600" /></div><h3 className="text-2xl font-bold text-gray-900">{allBusinesses.length}</h3><p className="text-gray-600">Businesses Listed</p></div>
                 <div className="bg-white rounded-2xl shadow-lg p-6 text-center transition-transform hover:scale-105"><div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Star className="w-8 h-8 text-green-600" /></div><h3 className="text-2xl font-bold text-gray-900">1,240+</h3><p className="text-gray-600">Reviews Written</p></div>
-                <div className="bg-white rounded-2xl shadow-lg p-6 text-center transition-transform hover:scale-105"><div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Calendar className="w-8 h-8 text-purple-600" /></div><h3 className="text-2xl font-bold text-gray-900">{events.length}</h3><p className="text-gray-600">Events This Week</p></div>
+                <div className="bg-white rounded-2xl shadow-lg p-6 text-center transition-transform hover:scale-105"><div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Calendar className="w-8 h-8 text-purple-600" /></div><h3 className="text-2xl font-bold text-gray-900">{events?.length || 0}</h3><p className="text-gray-600">Upcoming Events</p></div>
             </div>
             <div className="flex flex-wrap gap-4 mb-8">
               {[ { id: 'featured', label: 'Featured', icon: <Zap /> }, { id: 'new', label: 'New Arrivals', icon: <Star /> }, { id: 'events', label: 'Events', icon: <Calendar /> }, { id: 'collections', label: 'Collections', icon: <Filter /> }, { id: 'browse', label: 'Browse All', icon: <List /> } ].map((tab) => ( <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}> {React.cloneElement(tab.icon, {className: 'w-4 h-4'})} {tab.label} </button>))}
@@ -307,7 +551,50 @@ export default function BusinessPortal() {
             
             {activeTab === 'featured' && ( <div><h2 className="text-3xl font-bold text-gray-900 mb-6">✨ Featured Businesses</h2><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{featuredBusinesses.map((b) => <BusinessCard key={b.id} business={b} />)}</div></div> )}
             {activeTab === 'new' && ( <div><h2 className="text-3xl font-bold text-gray-900 mb-6">🆕 New Arrivals</h2><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{newBusinesses.map((b) => <BusinessCard key={b.id} business={b} />)}</div></div> )}
-            {activeTab === 'events' && ( <div><h2 className="text-3xl font-bold text-gray-900 mb-6">📅 This Week's Events</h2><div className="space-y-4">{events.map((event) => (<div key={event.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow"><div className="flex items-start justify-between"><div><h3 className="text-xl font-semibold text-gray-900 mb-2">{event.title}</h3><p className="text-gray-600 mb-1">📍 {event.business}</p><div className="flex items-center text-sm text-gray-500"><Clock className="w-4 h-4 mr-1" />{event.date}</div></div><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">{event.category}</span></div></div>))}</div></div> )}
+            {activeTab === 'events' && ( 
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-6">📅 Upcoming Events</h2>
+                    <div className="space-y-4">
+                        {events && events.length > 0 ? (
+                            events.map((event) => (
+                                <div key={event.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <h3 className="text-xl font-semibold text-gray-900 mb-2">{event.title}</h3>
+                                            <p className="text-gray-600 mb-1">📍 {event.business}</p>
+                                            {event.description && (
+                                                <p className="text-gray-600 text-sm mb-2">{event.description}</p>
+                                            )}
+                                            <div className="flex items-center text-sm text-gray-500">
+                                                <Clock className="w-4 h-4 mr-1" />
+                                                {event.date}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-2">
+                                            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
+                                                {event.category}
+                                            </span>
+                                            {event.photo_url && (
+                                                <img 
+                                                    src={event.photo_url} 
+                                                    alt={event.title}
+                                                    className="w-16 h-16 rounded-lg object-cover"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-10 border-2 border-dashed rounded-xl">
+                                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Events Yet</h3>
+                                <p className="text-gray-500">Be the first business to add an event!</p>
+                            </div>
+                        )}
+                    </div>
+                </div> 
+            )}
             {activeTab === 'collections' && ( <div><h2 className="text-3xl font-bold text-gray-900 mb-6">📚 Themed Collections</h2><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{collections.map((collection, index) => (<div key={index} className={`bg-gradient-to-br ${collection.color} text-white rounded-2xl p-6 hover:scale-105 transition-transform cursor-pointer`}><div className="flex items-center mb-4">{collection.icon}<h3 className="text-xl font-bold ml-3">{collection.title}</h3></div><p className="text-white/90">{collection.businesses} curated businesses</p></div>))}</div></div> )}
             
             {activeTab === 'browse' && (
@@ -331,7 +618,7 @@ export default function BusinessPortal() {
                 </div>
             )}
 
-            {selectedBusiness && <BusinessDetailModal business={selectedBusiness} onClose={() => setSelectedBusiness(null)} renderStars={renderStars} />}
+            {selectedBusiness && <BusinessDetailModal business={selectedBusiness} onClose={() => setSelectedBusiness(null)} renderStars={renderStars} user={user} authLoading={authLoading} />}
         </main>
     );
 }

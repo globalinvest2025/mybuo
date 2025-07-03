@@ -1,5 +1,3 @@
-// src/DashboardPage.jsx - VERSIÓN REFACTORIZADA CON EVENTOS COMPLETOS
-
 import React, { useState, Component } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link, Routes, Route } from 'react-router-dom';
@@ -7,81 +5,95 @@ import { supabase } from './lib/supabaseClient';
 import { PlusCircle, Building, Edit, Trash2, Image as ImageIcon, Calendar } from 'lucide-react';
 import EventsPage from './EventsPage.jsx';
 
-// ============================================================================
-// === CONSTANTES - Eliminar "Magic Strings" ===
-// ============================================================================
-const PREDEFINED_CATEGORIES = [
-  { value: 'restaurants', label: 'Restaurant' },
-  { value: 'hotels', label: 'Hotel' },
-  { value: 'clinics', label: 'Clinic' },
-  { value: 'gyms', label: 'Gym' },
-  { value: 'stores', label: 'Store' },
-];
-
-const OTHER_CATEGORY_VALUE = 'other';
-
 // --- List Business Modal Component ---
+// This modal is used for adding a new business. Photo upload section is removed.
 function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
     const [formData, setFormData] = useState({
         name: '', category: 'restaurants', location: '',
         description: '', phone: '', website: '', hours: '', tour_3d_url: '',
         coordinates: null, customCategory: ''
     });
-    const [formError, setFormError] = useState('');
     const placePickerRef = React.useRef(null);
 
     const handleChange = (e) => {
-        // Limpiar errores cuando el usuario interactúa con el formulario
-        if (formError) {
-            setFormError('');
-        }
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // useEffect para configurar Google Places Autocomplete en modal
     React.useEffect(() => {
         const inputElement = placePickerRef.current;
-        if (!inputElement) return;
+        console.log('🔧 Setting up Google Places Autocomplete in modal:', inputElement);
         
+        if (!inputElement) {
+            console.warn('⚠️ Input ref is null in modal');
+            return;
+        }
+
+        // Esperar a que Google Maps se cargue completamente
         const waitForGoogleMaps = () => {
             if (window.google && window.google.maps && window.google.maps.places) {
+                console.log('✅ Google Maps loaded in modal, creating Autocomplete');
                 setupAutocomplete();
             } else {
+                console.log('⏳ Waiting for Google Maps to load in modal...');
                 setTimeout(waitForGoogleMaps, 100);
             }
         };
 
         const setupAutocomplete = () => {
             try {
+                // Crear el autocomplete
                 const autocomplete = new window.google.maps.places.Autocomplete(inputElement, {
                     types: ['establishment', 'geocode'],
                     fields: ['place_id', 'formatted_address', 'name', 'geometry']
                 });
 
-                const placeChangedListener = autocomplete.addListener('place_changed', () => {
-                    const place = autocomplete.getPlace();
-                    if (!place || !place.geometry) return;
+                console.log('✅ Autocomplete created successfully in modal');
 
+                // Listener para cuando se selecciona un lugar
+                const placeChangedListener = autocomplete.addListener('place_changed', () => {
+                    console.log('🎯 Place changed event triggered in modal');
+                    
+                    const place = autocomplete.getPlace();
+                    console.log('📍 Place data received in modal:', place);
+                    
+                    if (!place || !place.geometry) {
+                        console.warn('⚠️ No valid place or geometry found in modal');
+                        return;
+                    }
+
+                    // Extraer dirección
                     const newAddress = place.formatted_address || place.name || '';
+                    console.log('🏠 Address extracted in modal:', newAddress);
+
+                    // Extraer coordenadas
                     const location = place.geometry.location;
                     const newCoordinates = {
                         lat: typeof location.lat === 'function' ? location.lat() : location.lat,
                         lng: typeof location.lng === 'function' ? location.lng() : location.lng
                     };
                     
+                    console.log('🌍 Coordinates extracted in modal:', newCoordinates);
+
+                    // Actualizar el estado
                     setFormData(prev => ({
                         ...prev,
                         location: newAddress,
                         coordinates: newCoordinates,
                     }));
+
+                    console.log('✅ Successfully captured place with coordinates in modal');
                 });
 
+                // Cleanup function
                 return () => {
+                    console.log('🧹 Cleaning up Autocomplete listeners in modal');
                     if (placeChangedListener) {
                         window.google.maps.event.removeListener(placeChangedListener);
                     }
                 };
             } catch (error) {
-                console.error('Error setting up Autocomplete in modal:', error);
+                console.error('❌ Error setting up Autocomplete in modal:', error);
             }
         };
 
@@ -90,12 +102,18 @@ function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        
+        // Validar que tengamos coordenadas antes de proceder
         if (!formData.coordinates) {
             alert("Por favor, selecciona una dirección del autocompletado para obtener las coordenadas.");
             return;
         }
+        
+        // Determine final category to save
         const finalCategory = formData.category === 'other' ? formData.customCategory : formData.category;
         const businessDataToSave = { ...formData, category: finalCategory };
+        
+        // Now, onAddBusiness only receives businessData, not files.
         onAddBusiness({ businessData: businessDataToSave });
     };
 
@@ -116,24 +134,55 @@ function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
                             <option value="stores">Store</option>
                             <option value="other">Other / Specify</option>
                         </select>
+                        
+                        {/* Custom category input - only show when "other" is selected */}
                         {formData.category === 'other' && (
                             <div className="mt-3">
-                                <label className="block text-sm font-medium text-gray-700">Specify your category *</label>
-                                <input type="text" name="customCategory" value={formData.customCategory} onChange={handleChange} placeholder="e.g., Barbershop, Auto Repair, etc." className="w-full border rounded-lg p-2 mt-1" required />
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Specify your category *
+                                </label>
+                                <input
+                                    type="text"
+                                    name="customCategory"
+                                    value={formData.customCategory}
+                                    onChange={handleChange}
+                                    placeholder="e.g., Barbershop, Auto Repair, Legal Office, etc."
+                                    className="w-full border rounded-lg p-2 mt-1"
+                                    required={formData.category === 'other'}
+                                />
                             </div>
                         )}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Location *</label>
-                        <input ref={placePickerRef} type="text" name="location" value={formData.location} onChange={handleChange} placeholder="Introduce una dirección" className="w-full border rounded-lg p-2 mt-1" />
-                        {formData.coordinates && <p className="text-xs text-green-600 mt-1">📍 Coordenadas: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}</p>}
-                        {!formData.coordinates && formData.location && <p className="text-xs text-red-600 mt-1">⚠️ Selecciona una dirección del autocompletado para obtener coordenadas</p>}
+                        <input
+                            ref={placePickerRef}
+                            type="text"
+                            name="location"
+                            value={formData.location}
+                            onChange={handleChange}
+                            placeholder="Introduce una dirección"
+                            className="w-full border rounded-lg p-2 mt-1"
+                        />
+                        
+                        {formData.location && (
+                            <p className="text-sm text-gray-500 mt-1">Dirección: {formData.location}</p>
+                        )}
+                        {formData.coordinates && (
+                            <p className="text-xs text-green-600 mt-1">
+                                📍 Coordenadas: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}
+                            </p>
+                        )}
+                        {!formData.coordinates && formData.location && (
+                            <p className="text-xs text-red-600 mt-1">⚠️ Selecciona una dirección del autocompletado para obtener coordenadas</p>
+                        )}
                     </div>
                     <div><label className="block text-sm font-medium text-gray-700">Description</label><textarea name="description" rows="3" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1"></textarea></div>
                     <div><label className="block text-sm font-medium text-gray-700">Hours</label><input name="hours" placeholder="e.g., 9:00 AM - 10:00 PM" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700">Phone Number</label><input type="tel" name="phone" placeholder="123-456-7890" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700">Website URL</label><input type="url" name="website" placeholder="https://example.com" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700">3D Tour URL</label><input type="url" name="tour_3d_url" placeholder="https://my.matterport.com/..." onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700">Phone Number</label><input type="tel" name="phone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}|\+[0-9]{1,3}-[0-9]{3}-[0-9]{3}-[0-9]{4}" placeholder="123-456-7890" title="Phone format: 123-456-7890 or 1234567890" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700">Website URL</label><input type="url" name="website" placeholder="https://example.com" pattern="https?://.+" title="Include http:// or https:// in the URL" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700">3D Tour URL</label><input type="url" name="tour_3d_url" placeholder="https://my.matterport.com/..." pattern="https?://.+" title="Include http:// or https:// in the URL" onChange={handleChange} className="w-full border rounded-lg p-2 mt-1" /></div>
+
                     <button type="submit" disabled={isSubmitting} className="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition-all disabled:bg-purple-300 mt-4">
                         {isSubmitting ? 'Saving Business...' : 'Save Business'}
                     </button>
@@ -147,14 +196,18 @@ function ListBusinessModal({ onClose, onAddBusiness, isSubmitting }) {
 class ErrorBoundary extends Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false };
+        this.state = { hasError: false, error: null, errorInfo: null };
     }
+
     static getDerivedStateFromError(error) {
         return { hasError: true };
     }
+
     componentDidCatch(error, errorInfo) {
-        console.error("ErrorBoundary caught an error", error, errorInfo);
+        this.setState({ error, errorInfo });
+        console.error("Error caught by ErrorBoundary:", error, errorInfo);
     }
+
     render() {
         if (this.state.hasError) {
             return (
@@ -171,11 +224,21 @@ class ErrorBoundary extends Component {
                                     Reload Page
                                 </button>
                             </div>
+                            {process.env.NODE_ENV === 'development' && (
+                                <details className="text-left bg-gray-100 p-4 rounded-lg mt-4">
+                                    <summary className="cursor-pointer font-semibold mb-2">Error Details (Development Only)</summary>
+                                    <p className="text-red-600 mb-2">{this.state.error && this.state.error.toString()}</p>
+                                    <pre className="text-xs overflow-auto bg-gray-200 p-2 rounded">
+                                        {this.state.errorInfo && this.state.errorInfo.componentStack}
+                                    </pre>
+                                </details>
+                            )}
                         </div>
                     </div>
                 </div>
             );
         }
+
         return this.props.children;
     }
 }
@@ -198,12 +261,24 @@ const showNotification = (message, type = 'success') => {
     }, isSuccess ? 3000 : 5000);
 };
 
-// ============================================================================
-// --- BusinessListPage Component ---
-// ============================================================================
-function BusinessListPage({ user }) {
+// --- Dashboard Page Component ---
+function DashboardPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
+
+    const { data: user } = useQuery({
+        queryKey: ['user'],
+        queryFn: async () => {
+            const { data: { session }, error } = await supabase.auth.getSession();
+
+            if (!session) {
+                navigate('/register');
+                return null;
+            }
+            return session.user;
+        }
+    });
 
     const { data: businesses, isLoading: isLoadingBusinesses } = useQuery({
         queryKey: ['businesses', user?.id],
@@ -218,11 +293,19 @@ function BusinessListPage({ user }) {
 
     const addBusinessMutation = useMutation({
         mutationFn: async ({ businessData }) => {
-            if (!user) throw new Error("User not found.");
+            if (!user) {
+                throw new Error("User not found.");
+            }
+
+            // Remove customCategory field before database insertion (it's only used for UI)
             const { customCategory, ...cleanBusinessData } = businessData;
             const dataToInsert = { ...cleanBusinessData, user_id: user.id };
-            const { data, error } = await supabase.from('businesses').insert([dataToInsert]).select();
-            if (error) throw error;
+
+            console.log('📝 Data being inserted to database:', dataToInsert);
+
+            const { data, error: insertError } = await supabase.from('businesses').insert([dataToInsert]).select();
+
+            if (insertError) throw insertError;
             return data;
         },
         onSuccess: () => {
@@ -230,9 +313,11 @@ function BusinessListPage({ user }) {
             showNotification('Business added successfully!', 'success');
             setIsModalOpen(false);
         },
-        onError: (error) => showNotification(`Error: ${error.message}`, 'error'),
+        onError: (error) => {
+            showNotification(`Error adding business: ${error.message}`, 'error');
+        }
     });
-    
+
     const deleteBusinessMutation = useMutation({
         mutationFn: async (businessId) => {
             console.log('🗑️ Starting business deletion process for ID:', businessId);
@@ -354,100 +439,19 @@ function BusinessListPage({ user }) {
         });
     };
 
-    if (isLoadingBusinesses) {
+    if (isLoadingBusinesses || !user) {
         return (
-            <div className="text-center py-10">
-                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent" role="status">
-                    <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-                </div>
-                <p className="mt-4 font-semibold text-xl text-gray-700">Loading Your Businesses...</p>
-            </div>
-        );
-    }
-    
-    return (
-        <>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-semibold">Your Businesses</h2>
-                <button onClick={() => setIsModalOpen(true)} className="bg-purple-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center gap-2">
-                    <PlusCircle className="w-5 h-5" />
-                    Add New Business
-                </button>
-            </div>
-            <div className="space-y-4">
-                {businesses && businesses.length > 0 ? (
-                    businesses.map(business => (
-                        <div key={business.id} className="bg-slate-50 border rounded-lg p-4 flex justify-between items-center hover:bg-slate-100 transition-colors">
-                           <div className="flex items-center gap-4">
-                               <div className="bg-slate-200 p-3 rounded-lg"><Building className="w-6 h-6 text-slate-600" /></div>
-                               <div>
-                                   <h3 className="font-bold text-lg">{business.name}</h3>
-                                   <p className="text-sm text-gray-500 capitalize">{business.category}</p>
-                               </div>
-                           </div>
-                           <div className="flex items-center gap-4">
-                               <Link to={`/dashboard/edit/${business.id}#photos`} className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1">
-                                   <ImageIcon className="w-4 h-4" /> Add Photos
-                               </Link>
-                               <Link to={`/dashboard/edit/${business.id}`} className="text-sm font-semibold text-purple-600 hover:underline flex items-center gap-1">
-                                   <Edit className="w-4 h-4" /> Edit
-                               </Link>
-                               <button onClick={() => handleDeleteBusiness(business.id, business.name)} disabled={deleteBusinessMutation.isPending} className="text-sm font-semibold text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50">
-                                   <Trash2 className="w-4 h-4" /> Delete
-                               </button>
-                           </div>
+            <div className="max-w-7xl mx-auto p-6">
+                <div className="bg-white rounded-2xl shadow-lg p-8 mt-10">
+                    <div className="text-center py-10">
+                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+                            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
                         </div>
-                    ))
-                ) : (
-                    <div className="text-center py-10 border-2 border-dashed rounded-xl">
-                        <p className="text-gray-500">You haven't listed any businesses yet.</p>
-                        <button onClick={() => setIsModalOpen(true)} className="mt-4 bg-purple-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center gap-2 mx-auto">
-                           <PlusCircle className="w-5 h-5" />
-                           Add Your First Business
-                        </button>
+                        <p className="mt-4 font-semibold text-xl text-gray-700">Loading Dashboard...</p>
+                        <p className="text-gray-500 text-sm mt-2">Please wait while we fetch your business data</p>
                     </div>
-                )}
+                </div>
             </div>
-            {isModalOpen && (
-                <ListBusinessModal
-                    onClose={() => setIsModalOpen(false)}
-                    onAddBusiness={addBusinessMutation.mutate}
-                    isSubmitting={addBusinessMutation.isPending}
-                />
-            )}
-        </>
-    )
-}
-
-// ============================================================================
-// --- COMPONENTE PRINCIPAL REFACTORIZADO: DashboardPage ---
-// ============================================================================
-function DashboardPage() {
-    const navigate = useNavigate();
-    const { data: user, isLoading: isLoadingUser } = useQuery({
-        queryKey: ['user'],
-        queryFn: async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                navigate('/register');
-                return null;
-            }
-            return session.user;
-        }
-    });
-
-    if (isLoadingUser) {
-        return (
-             <div className="max-w-7xl mx-auto p-6">
-                 <div className="bg-white rounded-2xl shadow-lg p-8 mt-10">
-                     <div className="text-center py-10">
-                         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent" role="status">
-                             <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-                         </div>
-                         <p className="mt-4 font-semibold text-xl text-gray-700">Loading Dashboard...</p>
-                     </div>
-                 </div>
-             </div>
         );
     }
 
@@ -456,51 +460,59 @@ function DashboardPage() {
             <div className="bg-white rounded-2xl shadow-lg p-8 mt-10">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Welcome to your Dashboard</h1>
-                    <p className="text-gray-600 mt-1">Logged in as: {user?.email}</p>
+                    <p className="text-gray-600 mt-1">Logged in as: {user.email}</p>
                 </div>
-
-                {/* --- SECCIÓN DE NAVEGACIÓN PRINCIPAL --- */}
-                <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Tarjeta para Gestionar Negocios */}
-                    <Link to="/dashboard/businesses" className="group block bg-slate-50 p-6 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-lg">
-                        <div className="flex items-center gap-4">
-                            <div className="bg-purple-100 text-purple-600 p-3 rounded-lg">
-                               <Building className="w-8 h-8" />
-                            </div>
-                            <div>
-                               <h2 className="text-xl font-bold text-gray-800 group-hover:text-purple-600">Manage Your Businesses</h2>
-                               <p className="text-gray-500 mt-1">Add, edit, and view your business listings.</p>
-                            </div>
-                        </div>
-                    </Link>
-
-                    {/* Tarjeta para Gestionar Eventos */}
-                    <Link to="/dashboard/events" className="group block bg-slate-50 p-6 rounded-xl border border-slate-200 hover:border-green-500 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-lg">
-                        <div className="flex items-center gap-4">
-                            <div className="bg-green-100 text-green-600 p-3 rounded-lg">
-                               <Calendar className="w-8 h-8" />
-                            </div>
-                            <div>
-                               <h2 className="text-xl font-bold text-gray-800 group-hover:text-green-600">Manage Your Events</h2>
-                               <p className="text-gray-500 mt-1">Create and organize events for your businesses.</p>
-                            </div>
-                        </div>
-                    </Link>
-                </div>
-                
-                {/* --- ÁREA PARA RENDERIZAR LAS SUB-PÁGINAS --- */}
                 <div className="mt-12 border-t pt-8">
-                    <Routes>
-                        <Route path="businesses" element={<BusinessListPage user={user} />} />
-                        <Route path="events" element={<EventsPage user={user} />} />
-                        <Route index element={
-                            <div className="text-center text-gray-500 py-4">
-                                <p>Select a category above to get started.</p>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-semibold">Your Businesses</h2>
+                        <button onClick={() => setIsModalOpen(true)} className="bg-purple-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center gap-2">
+                            <PlusCircle className="w-5 h-5" />
+                            Add New Business
+                        </button>
+                    </div>
+                    <div className="space-y-4">
+                        {businesses && businesses.length > 0 ? (
+                            businesses.map(business => (
+                                <div key={business.id} className="bg-slate-50 border rounded-lg p-4 flex justify-between items-center hover:bg-slate-100 transition-colors">
+                                    <div className="flex items-center gap-4">
+                                        <div className="bg-slate-200 p-3 rounded-lg"><Building className="w-6 h-6 text-slate-600" /></div>
+                                        <div>
+                                            <h3 className="font-bold text-lg">{business.name}</h3>
+                                            <p className="text-sm text-gray-500 capitalize">{business.category}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {/* NEW: Add Photos Button */}
+                                        <Link to={`/dashboard/edit/${business.id}#photos`} className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                                            <ImageIcon className="w-4 h-4" />
+                                            Add Photos
+                                        </Link>
+                                        <Link to={`/dashboard/edit/${business.id}`} className="text-sm font-semibold text-purple-600 hover:underline flex items-center gap-1">
+                                            <Edit className="w-4 h-4" />
+                                            Edit
+                                        </Link>
+                                        <button onClick={() => handleDeleteBusiness(business.id, business.name)} disabled={deleteBusinessMutation.isPending} className="text-sm font-semibold text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50">
+                                            <Trash2 className="w-4 h-4" />
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-10 border-2 border-dashed rounded-xl">
+                                <p className="text-gray-500">You haven't listed any businesses yet.</p>
                             </div>
-                        }/>
-                    </Routes>
+                        )}
+                    </div>
                 </div>
             </div>
+            {isModalOpen && (
+                <ListBusinessModal
+                    onClose={() => setIsModalOpen(false)}
+                    onAddBusiness={addBusinessMutation.mutate}
+                    isSubmitting={addBusinessMutation.isPending}
+                />
+            )}
         </div>
     );
 }
@@ -512,5 +524,8 @@ const DashboardPageWithErrorBoundary = () => (
     </ErrorBoundary>
 );
 
+// Export the wrapped component
 export default DashboardPageWithErrorBoundary;
+
+// Change the original export to a named export
 export { DashboardPage };

@@ -78,6 +78,36 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
     setError(null);
   };
 
+  // Drag & Drop functions for reordering
+  const handleDragStart = (e, index) => {
+    e.dataTransfer.setData('text/plain', index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    
+    if (dragIndex === dropIndex) return;
+
+    // Reorder both files and previews arrays
+    const reorderArray = (array) => {
+      const newArray = [...array];
+      const draggedItem = newArray[dragIndex];
+      newArray.splice(dragIndex, 1);
+      newArray.splice(dropIndex, 0, draggedItem);
+      return newArray;
+    };
+
+    setFiles(prevFiles => reorderArray(prevFiles));
+    setPreviews(prevPreviews => reorderArray(prevPreviews));
+  };
+
   const handleUpload = async () => {
     if (files.length === 0) {
       setError('Please select at least one photo to upload.'); // Text changed to English
@@ -91,8 +121,11 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
 
     const formData = new FormData();
     formData.append('businessId', businessId.toString());
-    files.forEach((file) => {
+    
+    // Send files with order information (first file = order_index 0, etc.)
+    files.forEach((file, index) => {
       formData.append('photos', file);
+      formData.append(`order_${index}`, index); // Send order information
     });
 
     try {
@@ -179,24 +212,50 @@ export default function PhotoUploadManager({ businessId, onUploadSuccess }) {
       </div>
 
       {previews.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
-          {previews.map((preview, index) => (
-            <div key={index} className="relative border border-gray-200 rounded-lg overflow-hidden">
-              <img 
-                src={preview.url} 
-                alt={preview.name}
-                className="w-full h-24 object-cover"
-              />
-              <button
-                onClick={() => removeFile(index)}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                aria-label={`Remove ${preview.name}`} // Text changed to English
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 mb-2">
+            📸 Drag photos to reorder • First photo = Cover photo
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {previews.map((preview, index) => (
+              <div 
+                key={index} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                className="relative border border-gray-200 rounded-lg overflow-hidden cursor-move hover:border-purple-400 transition-colors"
               >
-                ×
-              </button>
-              <p className="text-xs text-gray-600 px-2 py-1 truncate">{preview.name}</p>
-            </div>
-          ))}
+                {/* Cover photo indicator */}
+                {index === 0 && (
+                  <div className="absolute top-1 left-1 bg-purple-600 text-white text-xs px-2 py-1 rounded-full z-10">
+                    Cover
+                  </div>
+                )}
+                
+                {/* Drag handle indicator */}
+                <div className="absolute top-1 right-8 bg-black/50 text-white text-xs px-1 rounded z-10">
+                  ⋮⋮
+                </div>
+                
+                <img 
+                  src={preview.url} 
+                  alt={preview.name}
+                  className="w-full h-24 object-cover"
+                />
+                
+                <button
+                  onClick={() => removeFile(index)}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 z-20"
+                  aria-label={`Remove ${preview.name}`}
+                >
+                  ×
+                </button>
+                
+                <p className="text-xs text-gray-600 px-2 py-1 truncate">{preview.name}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
