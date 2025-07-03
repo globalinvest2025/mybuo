@@ -8,20 +8,11 @@
     <meta name="description" content="Discover local businesses like never before with immersive 3D virtual tours. Explore restaurants, hotels, clinics, and stores from your home. Your portal to the best spots." />
     <meta name="keywords" content="3D tour, virtual tour, local business, MyVuer, restaurant tour, hotel tour, business portal" />
 
-    <!-- Google Maps JavaScript API - MÉTODO TRADICIONAL -->
-    <script async defer 
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCk9I5Jk4naX5hdqRCqX6DaXIqhQvobFS0&libraries=places&loading=async">
-    </script>
-
+    <!-- Google Maps JavaScript API will be loaded dynamically -->
     <!-- Google Maps Extended Component Library - URL CORRECTA -->
     <script type="module" src="https://unpkg.com/@googlemaps/extended-component-library@0.6"></script>
   </head>
   <body>
-    <!-- API Loader con atributos correctos -->
-    <gmpx-api-loader 
-      api-key="AIzaSyCk9I5Jk4naX5hdqRCqX6DaXIqhQvobFS0" 
-      solution-channel="GMP_GE_placepicker_v2">
-    </gmpx-api-loader>
 
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

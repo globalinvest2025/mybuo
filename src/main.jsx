@@ -24,11 +24,8 @@ import EditBusinessPage from './EditBusinessPage.jsx';
 // No necesitas la etiqueta <script type="module"> en public/index.html si haces esto.
 //import '@googlemaps/extended-component-library';
 
-// Tu clave de API de Google Maps
-// ¡ADVERTENCIA DE SEGURIDAD! Gestiona esta clave con variables de entorno para producción.
-// Por ejemplo, import.meta.env.VITE_Maps_API_KEY si usas Vite
-// o process.env.REACT_APP_Maps_API_KEY si usas Create React App
-const Maps_API_KEY = 'AIzaSyCk9I5Jk4naX5hdqRCqX6DaXIqhQvobFS0'; // <-- REEMPLAZA con tu clave REAL
+// Tu clave de API de Google Maps desde variables de entorno
+const Maps_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 // ======================================================================
 
